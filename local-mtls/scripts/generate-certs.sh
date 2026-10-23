@@ -11,7 +11,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # 自己署名ルート CA と、その CA の秘密鍵を作る。
 # CA:TRUE と keyCertSign は、この証明書が他の証明書を発行する CA であることを示す。
-openssl req -quiet -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
   -keyout "$OUTPUT_DIR/ca.key" \
   -out "$OUTPUT_DIR/ca.crt" \
   -subj "/CN=Local mTLS POC CA" \
@@ -22,7 +22,7 @@ openssl req -quiet -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
 
 # サーバー用の秘密鍵と CSR（証明書署名要求）を作る。
 # CSR の内容を CA で署名し、サーバー証明書にする。
-openssl req -quiet -new -newkey rsa:2048 -nodes \
+openssl req -new -newkey rsa:2048 -nodes \
   -keyout "$OUTPUT_DIR/server.key" \
   -out "$OUTPUT_DIR/server.csr" \
   -subj "/CN=localhost"
