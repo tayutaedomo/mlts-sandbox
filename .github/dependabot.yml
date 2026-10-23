@@ -1,0 +1,26 @@
+version: 2
+
+updates:
+  # Python の依存関係を pyproject.toml と uv.lock に基づいて更新する。
+  - package-ecosystem: uv
+    directory: /local-mtls
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    commit-message:
+      prefix: chore
+      include: scope
+
+  # CI が使用する GitHub Actions のバージョンや固定 SHA を更新する。
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    commit-message:
+      prefix: chore
+      include: scope
