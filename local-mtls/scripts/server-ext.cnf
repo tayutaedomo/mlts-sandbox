@@ -1,0 +1,12 @@
+# サーバー証明書に付ける X.509 拡張設定。CA 証明書を作る設定ではない。
+# この証明書は CA ではなく、TLS サーバーとしてのみ使う。
+basicConstraints = critical,CA:FALSE
+# TLS の署名・鍵交換用途を許可する。
+keyUsage = critical,digitalSignature,keyEncipherment
+# クライアント認証用ではなく、サーバー認証用の証明書とする。
+extendedKeyUsage = serverAuth
+# 接続 URL のホスト名/IP と照合する SAN（Subject Alternative Name）。
+subjectAltName = DNS:localhost,IP:127.0.0.1
+# 証明書チェーン検証に使う鍵識別子を含める。
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
