@@ -1,0 +1,8 @@
+# この証明書は CA ではなく、TLS クライアント認証に使う。
+basicConstraints = critical,CA:FALSE
+# クライアントが秘密鍵を持っていることを、TLS 中の署名で証明する。
+keyUsage = critical,digitalSignature
+extendedKeyUsage = clientAuth
+# CA の鍵との対応を、証明書チェーン検証で確認するための識別子。
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
