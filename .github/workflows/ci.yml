@@ -1,0 +1,47 @@
+name: CI
+
+# PR の更新と main への反映時に検査する。手動実行にも対応する。
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 検査に必要なリポジトリの読み取り権限だけを付与する。
+permissions:
+  contents: read
+
+jobs:
+  local-mtls:
+    name: ローカル mTLS の検査
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: local-mtls
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: uv と Python 3.13 を準備
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.13.4"
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: local-mtls/uv.lock
+
+      # lockfile の更新が必要な場合は失敗させ、依存関係のずれを検出する。
+      - name: 開発用依存関係を同期
+        run: uv sync --locked --dev
+
+      - name: 整形をチェック
+        run: uv run --locked ruff format --check .
+
+      - name: lint を実行
+        run: uv run --locked ruff check .
+
+      # テスト内で OpenSSL による証明書生成とループバック通信を行う。
+      - name: テストを実行
+        run: uv run --locked pytest
