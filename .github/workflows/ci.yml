@@ -45,3 +45,36 @@ jobs:
       # テスト内で OpenSSL による証明書生成とループバック通信を行う。
       - name: テストを実行
         run: uv run --locked pytest
+
+  aws-mtls:
+    name: Lambda 用アプリの検査
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: aws-mtls
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: uv と Python 3.13 を準備
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.13.4"
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: aws-mtls/uv.lock
+
+      - name: 開発用依存関係を同期
+        run: uv sync --locked --dev
+
+      - name: 整形をチェック
+        run: uv run --locked ruff format --check .
+
+      - name: lint を実行
+        run: uv run --locked ruff check .
+
+      # サンプルイベントで実際の Mangum を呼び出す。AWS 接続は行わない。
+      - name: テストを実行
+        run: uv run --locked pytest

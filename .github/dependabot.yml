@@ -13,6 +13,17 @@ updates:
       prefix: chore
       include: scope
 
+  - package-ecosystem: uv
+    directory: /aws-mtls
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    commit-message:
+      prefix: chore
+      include: scope
+
   # CI が使用する GitHub Actions のバージョンや固定 SHA を更新する。
   - package-ecosystem: github-actions
     directory: /
