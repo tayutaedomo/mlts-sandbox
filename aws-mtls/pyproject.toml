@@ -1,0 +1,36 @@
+# このディレクトリは Python 3.13 以上で実行します。
+[project]
+name = "aws-mtls"
+version = "0.1.0"
+description = "FastAPI と Mangum で Lambda のイベント変換を学ぶためのサンプル"
+requires-python = ">=3.13"
+# FastAPI が応答を定義し、Mangum が Lambda イベントとの変換を担当します。
+dependencies = [
+    "fastapi>=0.162.0",
+    "mangum>=0.22.0",
+]
+
+# pytest と Ruff はテスト・コード整形・静的検査に使う開発用依存関係です。
+[dependency-groups]
+dev = [
+    "pytest>=8.0,<10",
+    "ruff>=0.17.2",
+]
+
+# このサンプルは配布用パッケージではなく、uv run で実行します。
+[tool.uv]
+package = false
+
+# 配布パッケージとしてインストールせず、プロジェクト直下のコードをテストから読み込む。
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+# Python 3.13 を対象に、1行の長さを120文字として整形します。
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+# 基本的な構文・未使用変数などの検査と、import の並び順の検査を有効にします。
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

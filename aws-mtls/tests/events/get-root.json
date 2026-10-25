@@ -1,0 +1,31 @@
+{
+  "resource": "/",
+  "path": "/",
+  "httpMethod": "GET",
+  "headers": {
+    "Host": "example.test",
+    "X-Forwarded-Proto": "https"
+  },
+  "multiValueHeaders": {},
+  "queryStringParameters": null,
+  "multiValueQueryStringParameters": null,
+  "pathParameters": null,
+  "stageVariables": null,
+  "requestContext": {
+    "accountId": "000000000000",
+    "apiId": "example-api",
+    "domainName": "example.test",
+    "httpMethod": "GET",
+    "identity": {
+      "sourceIp": "192.0.2.1",
+      "userAgent": "local-event-example"
+    },
+    "path": "/poc/",
+    "protocol": "HTTP/1.1",
+    "requestId": "local-request",
+    "resourcePath": "/",
+    "stage": "poc"
+  },
+  "body": null,
+  "isBase64Encoded": false
+}

@@ -12,6 +12,9 @@
 │   ├── mtls_fastapi/   # FastAPI + Uvicorn による mTLS
 │   ├── tests/          # 証明書検証のテスト
 │   └── scripts/        # 証明書生成スクリプトと拡張設定
+├── aws-mtls/           # FastAPI + Mangum の Lambda イベント変換
+│   ├── lambda_app/     # FastAPI アプリと Lambda ハンドラー
+│   └── tests/          # REST API イベントによる検証
 ├── docs/
 │   └── poc/     # POC の目的、検証内容、結果の記録
 └── .github/     # CI、Dependabot、PR テンプレート
@@ -21,3 +24,5 @@
 
 - [ローカル mTLS POC の検証記録](docs/poc/local-mtls.md)
 - [ローカル環境のセットアップ・実行・テスト・Ruff の手順](local-mtls/README.md)
+- [AWS 用 Lambda アプリの実行・検証手順](aws-mtls/README.md)
+- [Lambda 用アプリのイベント変換の検証記録](docs/poc/aws-lambda.md)
