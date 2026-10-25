@@ -4,6 +4,7 @@ Python 標準ライブラリと OpenSSL を使い、ローカルで TLS と mTLS
 
 ## 目次
 
+- [構成](#構成)
 - [実行環境](#実行環境)
 - [HTTPS の確認](#https-の確認)
   - [接続成功の確認](#接続成功の確認)
@@ -11,6 +12,21 @@ Python 標準ライブラリと OpenSSL を使い、ローカルで TLS と mTLS
   - [自動テスト](#自動テスト)
 - [コード整形と静的検査](#コード整形と静的検査)
 - [検証記録](#検証記録)
+
+## 構成
+
+```text
+.
+├── tls/               # クライアント証明書を要求しない HTTPS の学習例
+│   ├── __init__.py
+│   ├── server.py
+│   └── client.py
+├── tests/
+│   └── test_tls.py
+└── scripts/           # 証明書生成スクリプトと拡張設定
+```
+
+現在の HTTPS 実装は `tls/` パッケージに置きます。クライアント証明書認証を追加する段階で、独立した学習例として `mtls/` パッケージとそのテストを追加します。
 
 ## 実行環境
 
@@ -34,7 +50,7 @@ sh scripts/generate-certs.sh
 ターミナル1で HTTPS サーバーを起動します。`server.crt` と `server.key` はサーバーの身元を示します。
 
 ```sh
-uv run python -m mtls_poc.server \
+uv run python -m tls.server \
   --certfile certs/generated/server.crt \
   --keyfile certs/generated/server.key
 ```
@@ -42,7 +58,7 @@ uv run python -m mtls_poc.server \
 ターミナル2から、CA 証明書を指定して接続します。クライアントは CA 署名と URL のホスト名の両方を検証します。
 
 ```sh
-uv run python -m mtls_poc.client \
+uv run python -m tls.client \
   --url https://127.0.0.1:8443/ \
   --cafile certs/generated/ca.crt
 ```
@@ -60,7 +76,7 @@ sh scripts/generate-certs.sh certs/generated/untrusted
 このスクリプトは別の CA とサーバー証明書一式を生成します。今回クライアントに指定するのは、そのうちの `ca.crt` だけです。稼働中のサーバーは元の証明書を使い続けます。
 
 ```sh
-uv run python -m mtls_poc.client \
+uv run python -m tls.client \
   --url https://127.0.0.1:8443/ \
   --cafile certs/generated/untrusted/ca.crt
 ```
@@ -70,7 +86,7 @@ uv run python -m mtls_poc.client \
 元の CA を指定すると、再び接続できます。
 
 ```sh
-uv run python -m mtls_poc.client \
+uv run python -m tls.client \
   --url https://127.0.0.1:8443/ \
   --cafile certs/generated/ca.crt
 ```

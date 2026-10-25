@@ -6,8 +6,8 @@ from urllib.error import URLError
 
 import pytest
 
-from mtls_poc.client import get
-from mtls_poc.server import create_server
+from tls.client import get
+from tls.server import create_server
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 CERT_SCRIPT = PROJECT_DIR / "scripts" / "generate-certs.sh"

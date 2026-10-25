@@ -7,6 +7,9 @@
 ```text
 .
 ├── local-mtls/  # Python と OpenSSL によるローカル検証
+│   ├── tls/    # HTTPS サーバー・クライアント
+│   ├── tests/  # 証明書検証のテスト
+│   └── scripts/ # 証明書生成スクリプトと拡張設定
 ├── docs/
 │   └── poc/     # POC の目的、検証内容、結果の記録
 └── .github/     # CI、Dependabot、PR テンプレート

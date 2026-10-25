@@ -37,8 +37,8 @@ AC と RA 間の HTTPS 通信で使うクライアント証明書認証を理解
 
 ## コードと証明書設定の対応
 
-- [server.py](../../local-mtls/mtls_poc/server.py) の `load_cert_chain` でサーバー証明書と秘密鍵を読み込み、`wrap_socket` で HTTP サーバーのソケットに TLS を追加する。
-- [client.py](../../local-mtls/mtls_poc/client.py) の `create_default_context(cafile=...)` で信頼する CA 証明書を指定する。証明書検証と接続先のホスト名検証を有効にして接続する。
+- [server.py](../../local-mtls/tls/server.py) の `load_cert_chain` でサーバー証明書と秘密鍵を読み込み、`wrap_socket` で HTTP サーバーのソケットに TLS を追加する。
+- [client.py](../../local-mtls/tls/client.py) の `create_default_context(cafile=...)` で信頼する CA 証明書を指定する。証明書検証と接続先のホスト名検証を有効にして接続する。
 - [generate-certs.sh](../../local-mtls/scripts/generate-certs.sh) で CA とサーバー証明書を生成する。
 - [server-ext.cnf](../../local-mtls/scripts/server-ext.cnf) は、署名時にサーバー証明書へ付ける X.509 拡張設定。`serverAuth` で用途を指定し、SAN に接続先の `localhost` と `127.0.0.1` を含める。鍵識別子も設定して、証明書チェーンの検証に使えるようにしている。
 
@@ -53,7 +53,7 @@ Python 3.13.17・pytest 9.1.1 のローカル環境で、次の2件が成功し�
 | サーバー証明書を発行した CA をクライアントが信頼する | HTTPS 接続が成立し、応答本文を取得できる | 成功 |
 | 別の CA をクライアントが信頼する | サーバー証明書の検証に失敗する | `SSLCertVerificationError` を確認 |
 
-[テストコード](../../local-mtls/tests/test_https.py) では、別々の CA を生成して信頼関係の違いを比較している。接続には `127.0.0.1` の一時ポートを使い、外部サーバーには接続しない。
+[テストコード](../../local-mtls/tests/test_tls.py) では、別々の CA を生成して信頼関係の違いを比較している。接続には `127.0.0.1` の一時ポートを使い、外部サーバーには接続しない。
 
 ### 手動確認
 
