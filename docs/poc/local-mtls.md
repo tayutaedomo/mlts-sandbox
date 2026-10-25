@@ -16,6 +16,8 @@
   - [HTTPS の実装](#https-の実装)
   - [mTLS の実装](#mtls-の実装)
   - [FastAPI と Uvicorn の実装](#fastapi-と-uvicorn-の実装)
+  - [urllib と Requests の実装比較](#urllib-と-requests-の実装比較)
+    - [Requests の HTTPS と mTLS の差分](#requests-の-https-と-mtls-の差分)
   - [証明書の生成と用途](#証明書の生成と用途)
 - [接続時の挙動](#接続時の挙動)
   - [HTTPS のサーバー認証](#https-のサーバー認証)
@@ -26,7 +28,7 @@
 
 AC と RA 間の HTTPS 通信で使うクライアント証明書認証を理解するため、Python と OpenSSL で TLS/mTLS を小さく実装して検証する。
 
-`tls/` にはサーバー証明書を検証する HTTPS、`mtls/` にはクライアント証明書も検証する mTLS を、独立した学習例として実装している。`mtls/` は正常接続と、証明書なし・非信頼 CA の証明書の拒否を検証する。`mtls_fastapi/` には FastAPI + Uvicorn による別のサーバー実装を置き、既存クライアントで正常接続と、証明書なし・非信頼 CA の証明書の拒否を検証する。AWS 上の構成や本番の AC 接続仕様は、このローカル検証の対象に含めない。
+`tls/` にはサーバー証明書を検証する HTTPS、`mtls/` にはクライアント証明書も検証する mTLS を、独立した学習例として実装している。`mtls/` は正常接続と、証明書なし・非信頼 CA の証明書の拒否を検証する。`mtls_fastapi/` には FastAPI + Uvicorn による別のサーバー実装を置き、既存クライアントで正常接続と、証明書なし・非信頼 CA の証明書の拒否を検証する。`tls/client_requests.py` と `mtls/client_requests.py` はそれぞれ HTTPS と mTLS を Requests で実装し、urllib 版と比較する。AWS 上の構成や本番の AC 接続仕様は、このローカル検証の対象に含めない。
 
 実行方法は [local-mtls/README.md](../../local-mtls/README.md) を参照する。この文書には検証の目的、仕組み、結果を残す。
 
@@ -175,6 +177,42 @@ HTTP の応答処理を FastAPI、ポートの待ち受けと TLS の処理を U
 | `load_verify_locations(cafile)` | `ssl_ca_certs` |
 | `verify_mode = ssl.CERT_REQUIRED` | `ssl_cert_reqs=ssl.CERT_REQUIRED` |
 
+### urllib と Requests の実装比較
+
+- 同じ URL・CA・クライアント証明書・秘密鍵で接続し、クライアント実装だけを比較。
+| 認証方式 | urllib 版 | Requests 版 |
+| --- | --- | --- |
+| HTTPS（サーバー認証） | [tls/client.py](../../local-mtls/tls/client.py) | [tls/client_requests.py](../../local-mtls/tls/client_requests.py) |
+| mTLS（相互認証） | [mtls/client.py](../../local-mtls/mtls/client.py) | [mtls/client_requests.py](../../local-mtls/mtls/client_requests.py) |
+
+| 役割 | urllib 版 | Requests 版 |
+| --- | --- | --- |
+| サーバー証明書・ホスト名の検証 | `ssl.create_default_context(cafile=...)` | `verify=cafile` |
+| 自分の証明書・秘密鍵の指定 | `context.load_cert_chain(certfile, keyfile)` | `cert=(certfile, keyfile)` |
+| HTTPS GET | `urlopen(url, context=context, timeout=5)` | `requests.get(url, verify=..., cert=..., timeout=5)` |
+| 応答の文字列化 | `response.read().decode("utf-8")` | `response.text`（応答の文字コード指定を使用） |
+| HTTP 4xx・5xx | `urlopen` が `HTTPError` を送出 | `raise_for_status()` で `HTTPError` を送出 |
+| 証明書なしの指定 | `tls.client` を使用 | 証明書・秘密鍵を両方省略（`cert=None`） |
+
+- `verify` は相手を信頼する条件、`cert` は自分を証明するファイル。
+- Requests 版も接続・読み取りの待ち時間を `timeout=5` で指定。リクエスト全体の完了期限ではない。
+- 証明書と秘密鍵の片方だけを指定した場合は、接続前に入力エラー。
+
+#### Requests の HTTPS と mTLS の差分
+
+```diff
+ requests.get(
+     url,
+     verify=str(cafile),
++    cert=(str(certfile), str(keyfile)),
+     timeout=5,
+ )
+```
+
+- 共通：`verify` でサーバーを検証し、応答本文を返す。サーバーコードは変更不要。
+- mTLS：`cert` でクライアント自身の証明書・秘密鍵を追加。
+- mTLS 版の省略・入力チェック：証明書なしの拒否を試すための処理。正常接続の認証設定の差は上記の `cert`。
+
 ### 証明書の生成と用途
 
 | ファイル | 役割 |
@@ -189,31 +227,41 @@ HTTP の応答処理を FastAPI、ポートの待ち受けと TLS の処理を U
 
 `tls/` の HTTPS 版では、サーバーと接続先を固定し、クライアントが信頼する CA を変えて比較する。
 
-| 接続条件 | HTTP 処理 | クライアントに見える出力 |
-| --- | --- | --- |
-| サーバー証明書の発行元 CA を信頼する | リクエストを処理し、200 と固定本文を返す | 応答本文 |
-| 別の CA を信頼する | TLS 段階でクライアントが拒否し、HTTP 処理に到達しない | `CERTIFICATE_VERIFY_FAILED` |
+| 接続条件 | 共通の HTTP 処理 | urllib 版の出力 | Requests 版の出力 |
+| --- | --- | --- | --- |
+| サーバー証明書の発行元 CA を信頼する | 200 と固定本文を返す | `ローカル HTTPS サーバーからの応答です。` | `ローカル HTTPS サーバーからの応答です。` |
+| 別の CA を信頼する | クライアントが TLS 段階で拒否、HTTP 処理なし | `URLError` 内の `SSLCertVerificationError`：`CERTIFICATE_VERIFY_FAILED` | `requests.exceptions.SSLError`：`CERTIFICATE_VERIFY_FAILED` |
 
 ### mTLS のクライアント認証の比較
 
-両実装とも、クライアント・サーバー証明書・信頼する CA を共通にし、サーバー実装だけを置き換える。サーバー検証用 CA は正常なまま、提示するクライアント証明書の有無と発行元を変えて比較する。
+- サーバー検証用 CA は正常なまま、クライアント証明書の有無と発行元を変更。
+- 同じ条件でサーバーとクライアントを置き換え、拒否される条件と例外の見え方を比較。
 
-| 接続条件 | 両実装に共通する HTTP 処理 | 標準ライブラリ版のクライアント出力 | FastAPI + Uvicorn 版のクライアント出力 |
-| --- | --- | --- | --- |
-| 正常なクライアント証明書 | リクエストを処理し、200 と同じ固定本文を返す | `ローカル mTLS サーバーからの応答です。` | `ローカル mTLS サーバーからの応答です。` |
-| クライアント証明書なし | TLS 段階でサーバーが拒否し、HTTP 処理に到達しない | `CERTIFICATE_REQUIRED` またはハンドシェイク失敗の TLS アラート | `RemoteDisconnected` |
-| 非信頼 CA のクライアント証明書 | TLS 段階でサーバーが拒否し、HTTP 処理に到達しない | `UNKNOWN_CA` の TLS アラート | `RemoteDisconnected` |
+| サーバー | 接続条件 | 共通の HTTP 処理 | urllib 版の出力 | Requests 版の出力 |
+| --- | --- | --- | --- | --- |
+| 両サーバー | 正常なクライアント証明書 | 200 と同じ固定本文を返す | `ローカル mTLS サーバーからの応答です。` | `ローカル mTLS サーバーからの応答です。` |
+| 標準ライブラリ版 | クライアント証明書なし | TLS 段階で拒否、HTTP 処理なし | `ssl.SSLError`（`URLError` 内の場合もある）：`CERTIFICATE_REQUIRED` など | `requests.exceptions.SSLError`：`CERTIFICATE_REQUIRED` など |
+| 標準ライブラリ版 | 非信頼 CA のクライアント証明書 | TLS 段階で拒否、HTTP 処理なし | `ssl.SSLError`（`URLError` 内の場合もある）：`UNKNOWN_CA` | `requests.exceptions.SSLError`：`UNKNOWN_CA` |
+| FastAPI 版 | クライアント証明書なし | TLS 段階で拒否、HTTP 処理なし | `http.client.RemoteDisconnected` | `requests.exceptions.ConnectionError`：内部に `RemoteDisconnected` |
+| FastAPI 版 | 非信頼 CA のクライアント証明書 | TLS 段階で拒否、HTTP 処理なし | `http.client.RemoteDisconnected` | `requests.exceptions.ConnectionError`：内部に `RemoteDisconnected` |
+| 両サーバー | サーバー検証用 CA が不正（自分の証明書は正常） | クライアントが TLS 段階で拒否、HTTP 処理なし | `URLError` 内の `SSLCertVerificationError`：`CERTIFICATE_VERIFY_FAILED` | `requests.exceptions.SSLError`：`CERTIFICATE_VERIFY_FAILED` |
 
-表の出力はこの実装での例。`RemoteDisconnected` のメッセージは `Remote end closed connection without response` となる。標準ライブラリ版では TLS アラートとして見える拒否が、Uvicorn の asyncio による TLS 処理では接続切断として見える。
+- 出力はこの実装での例。TLS バージョンや実行環境でアラート・切断・リセットなど表記が変わる。
+- `RemoteDisconnected` のメッセージ：`Remote end closed connection without response`。
+- 拒否時は HTTP の 401・403 を返さず、FastAPI も呼び出されない。
+- 拒否後もサーバーは正常な証明書による接続を受け付ける。
+- 例外名だけでは拒否理由を特定できない。接続拒否やタイムアウトとも区別する。
 
-両実装とも拒否時に HTTP のエラー応答は返さず、正常な証明書による接続は引き続き受け付ける。FastAPI の処理も呼び出されないため、401 や 403 は返らない。TLS バージョンや実行環境によってはアラートや接続リセットなど表記が変わるので、例外名だけから拒否理由を特定することはできない。
-
-操作手順は [HTTPS の確認](../../local-mtls/README.md#https-の確認)、[mTLS の確認](../../local-mtls/README.md#mtls-の確認)、[FastAPI と Uvicorn による mTLS の確認](../../local-mtls/README.md#fastapi-と-uvicorn-による-mtls-の確認) を参照する。
+操作手順は [HTTPS の確認](../../local-mtls/README.md#https-の確認)、[mTLS の確認](../../local-mtls/README.md#mtls-の確認) を参照する。
 
 ### 検証の範囲
+
+[HTTPS の Requests 版テスト](../../local-mtls/tests/test_tls_requests.py) は、既存の HTTPS サーバーで正常接続と非信頼 CA によるサーバー認証失敗を検証する。手順は [HTTPS の確認](../../local-mtls/README.md#https-の確認) を参照する。
 
 [HTTPS のテスト](../../local-mtls/tests/test_tls.py) はサーバー証明書の発行元による違い、[mTLS のテスト](../../local-mtls/tests/test_mtls.py) はクライアント証明書の提示有無と発行元による違いを検証する。
 
 [FastAPI 版のテスト](../../local-mtls/tests/test_mtls_fastapi.py) は実際の Uvicorn に接続し、拒否したリクエストが HTTP 処理へ到達しないことと、拒否前後の正常接続を検証する。接続拒否やタイムアウト、クライアント側のサーバー証明書検証失敗は、クライアント認証の拒否として扱わない。
+
+[Requests 版のテスト](../../local-mtls/tests/test_mtls_requests.py) は両サーバーに対し、正常接続・証明書なし・非信頼 CA の証明書・サーバー検証用 CA の不一致を検証する。クライアント認証の拒否前後にも正常接続し、サーバー停止による失敗と区別する。証明書と秘密鍵の片方だけの指定と、HTTP エラーの伝播は単体テストで検証する。
 
 ホスト名不一致や有効期限切れは個別のテストにしていない。

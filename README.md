@@ -7,8 +7,8 @@
 ```text
 .
 ├── local-mtls/         # Python と OpenSSL によるローカル検証
-│   ├── tls/            # 標準ライブラリによる HTTPS
-│   ├── mtls/           # 標準ライブラリによる mTLS
+│   ├── tls/            # HTTPS サーバーと urllib・Requests 版クライアント
+│   ├── mtls/           # mTLS サーバーと urllib・Requests 版クライアント
 │   ├── mtls_fastapi/   # FastAPI + Uvicorn による mTLS
 │   ├── tests/          # 証明書検証のテスト
 │   └── scripts/        # 証明書生成スクリプトと拡張設定
