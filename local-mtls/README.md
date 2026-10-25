@@ -1,6 +1,6 @@
 # ローカル mTLS
 
-Python 標準ライブラリと OpenSSL を使い、ローカルで TLS と mTLS の動作を学ぶための領域です。
+Python と OpenSSL を使い、ローカルで TLS と mTLS の動作を学ぶための領域です。標準ライブラリ版と FastAPI + Uvicorn 版を比較します。
 
 ## 目次
 
@@ -16,6 +16,11 @@ Python 標準ライブラリと OpenSSL を使い、ローカルで TLS と mTLS
   - [クライアント証明書なしの接続](#クライアント証明書なしの接続)
   - [非信頼 CA のクライアント証明書による接続](#非信頼-ca-のクライアント証明書による接続)
   - [相互認証の設定](#相互認証の設定)
+- [FastAPI と Uvicorn による mTLS の確認](#fastapi-と-uvicorn-による-mtls-の確認)
+  - [依存関係と証明書](#依存関係と証明書)
+  - [サーバーの起動と接続](#サーバーの起動と接続)
+  - [FastAPI 版への証明書なしの接続](#fastapi-版への証明書なしの接続)
+  - [FastAPI 版への非信頼 CA の証明書による接続](#fastapi-版への非信頼-ca-の証明書による接続)
 - [自動テスト](#自動テスト)
 - [コード整形と静的検査](#コード整形と静的検査)
 - [検証記録](#検証記録)
@@ -32,13 +37,18 @@ Python 標準ライブラリと OpenSSL を使い、ローカルで TLS と mTLS
 │   ├── __init__.py
 │   ├── server.py
 │   └── client.py
+├── mtls_fastapi/      # HTTP 処理と TLS を受け付けるサーバーを分離した学習例
+│   ├── __init__.py
+│   ├── app.py
+│   └── server.py
 ├── tests/
 │   ├── test_tls.py
-│   └── test_mtls.py
+│   ├── test_mtls.py
+│   └── test_mtls_fastapi.py
 └── scripts/           # 証明書生成スクリプトと拡張設定
 ```
 
-`tls/` と `mtls/` は独立した学習例です。両方のコードを比較し、クライアント証明書認証に必要な設定を確認できます。
+`tls/` と `mtls/` は標準ライブラリによる独立した学習例です。`mtls_fastapi/` は HTTP 処理を FastAPI、待ち受けと TLS を Uvicorn に任せます。クライアントは既存の `mtls.client` を使います。
 
 ## 実行環境
 
@@ -46,7 +56,7 @@ Python 標準ライブラリと OpenSSL を使い、ローカルで TLS と mTLS
 - [uv](https://docs.astral.sh/uv/)
 - OpenSSL
 
-実行時に必要な外部ライブラリはありません。`pytest` と Ruff は開発用依存関係として `pyproject.toml` で管理します。
+`tls/` と `mtls/` は標準ライブラリのみで動作します。`mtls_fastapi/` は FastAPI と Uvicorn を使用します。実行時の依存関係と、開発用の pytest・Ruff は `pyproject.toml` と `uv.lock` で管理します。
 
 ## HTTPS の確認
 
@@ -234,6 +244,97 @@ uv run python -m mtls.client \
 
 正常な証明書による接続に加え、証明書なし・別の CA のクライアント証明書を拒否する動作を自動テストで検証します。
 
+## FastAPI と Uvicorn による mTLS の確認
+
+サーバー実装だけを変え、証明書とクライアントは標準ライブラリ版と同じものを使います。
+
+```mermaid
+flowchart TD
+    A["準備：依存関係と既存の mTLS 証明書"] --> B["ターミナル1：Uvicorn を起動"]
+    subgraph client["ターミナル2：クライアント証明書を変えて比較"]
+        C["正常な証明書 → FastAPI の応答を取得"]
+        D["証明書なし → TLS 段階で切断"]
+        E["非信頼 CA の証明書 → TLS 段階で切断"]
+    end
+    B --> C
+    B --> D
+    B --> E
+    C --> F["比較後、ターミナル1で Ctrl+C → 停止"]
+    D --> F
+    E --> F
+```
+
+### 依存関係と証明書
+
+`local-mtls/` で依存関係を同期します。
+
+```sh
+uv sync --locked --dev
+```
+
+証明書は [mTLS の証明書の準備](#証明書の準備) と同じものを使います。生成済みなら再生成は不要です。
+
+### サーバーの起動と接続
+
+ターミナル1でサーバーを起動します。他の例と区別するため、既定ポートは `8445` です。
+
+```sh
+uv run python -m mtls_fastapi.server \
+  --certfile certs/generated/server.crt \
+  --keyfile certs/generated/server.key \
+  --client-ca certs/generated/ca.crt
+```
+
+ターミナル2で既存の mTLS クライアントから接続します。
+
+```sh
+uv run python -m mtls.client \
+  --url https://127.0.0.1:8445/ \
+  --cafile certs/generated/ca.crt \
+  --certfile certs/generated/client.crt \
+  --keyfile certs/generated/client.key
+```
+
+`ローカル mTLS サーバーからの応答です。` が表示されます。FastAPI は JSON ではなくプレーンテキストを返すため、標準ライブラリ版と同じ本文になります。サーバーを起動したまま、ターミナル2で拒否ケースを順に試します。
+
+### FastAPI 版への証明書なしの接続
+
+証明書を提示しない HTTPS 版クライアントから接続します。接続先は Uvicorn のポート `8445` です。
+
+```sh
+uv run python -m tls.client \
+  --url https://127.0.0.1:8445/ \
+  --cafile certs/generated/ca.crt
+```
+
+### FastAPI 版への非信頼 CA の証明書による接続
+
+別の CA とクライアント証明書を、元のファイルを上書きしない出力先に生成します。
+
+```sh
+sh scripts/generate-certs.sh certs/generated/untrusted
+```
+
+サーバーを検証する `--cafile` は正常なまま、自分が提示する証明書と秘密鍵だけを変えます。
+
+```sh
+uv run python -m mtls.client \
+  --url https://127.0.0.1:8445/ \
+  --cafile certs/generated/ca.crt \
+  --certfile certs/generated/untrusted/client.crt \
+  --keyfile certs/generated/untrusted/client.key
+```
+
+両方の拒否ケースでは、次のように HTTP 応答を受け取らず切断されます。
+
+```text
+http.client.RemoteDisconnected: Remote end closed connection without response
+```
+
+環境によっては TLS アラートや接続リセットとして見えることもあります。FastAPI の処理へ到達する前に Uvicorn が TLS 接続を拒否するため、HTTP の 401・403 は返りません。`Connection refused` やタイムアウトは、認証以外の通信失敗として区別します。
+
+最後に正常なクライアント証明書のコマンドを再実行すると、サーバーが接続を受け付け続けることを比較できます。終了時はターミナル1で `Ctrl+C` を押します。
+
 ## 自動テスト
 
 テストは一時ディレクトリに CA と証明書を生成し、ループバック接続で次のケースを検証します。
@@ -245,6 +346,9 @@ uv run python -m mtls.client \
 | mTLS | 信頼する CA が発行したクライアント証明書を提示する | 接続成功 |
 | mTLS | クライアント証明書を提示しない | 接続拒否 |
 | mTLS | 別の CA が発行したクライアント証明書を提示する | 接続拒否 |
+| FastAPI + Uvicorn | 信頼する CA が発行したクライアント証明書を提示する | 既存 mTLS 版と同じ本文で接続成功 |
+| FastAPI + Uvicorn | クライアント証明書を提示しない | HTTP 処理に到達せず接続を拒否 |
+| FastAPI + Uvicorn | 別の CA が発行したクライアント証明書を提示する | HTTP 処理に到達せず接続を拒否 |
 
 ```sh
 uv run pytest

@@ -12,19 +12,21 @@
     - [引数と設定](#引数と設定)
   - [アプリケーションと TLS の役割](#アプリケーションと-tls-の役割)
 - [コードと証明書設定の対応](#コードと証明書設定の対応)
+  - [mTLS サーバーの構成比較](#mtls-サーバーの構成比較)
   - [HTTPS の実装](#https-の実装)
   - [mTLS の実装](#mtls-の実装)
+  - [FastAPI と Uvicorn の実装](#fastapi-と-uvicorn-の実装)
   - [証明書の生成と用途](#証明書の生成と用途)
-- [検証結果](#検証結果)
-  - [自動テスト](#自動テスト)
-  - [手動確認](#手動確認)
-- [次に検証すること](#次に検証すること)
+- [接続時の挙動](#接続時の挙動)
+  - [HTTPS のサーバー認証](#https-のサーバー認証)
+  - [mTLS のクライアント認証の比較](#mtls-のクライアント認証の比較)
+  - [検証の範囲](#検証の範囲)
 
 ## 目的と対象
 
 AC と RA 間の HTTPS 通信で使うクライアント証明書認証を理解するため、Python と OpenSSL で TLS/mTLS を小さく実装して検証する。
 
-`tls/` にはサーバー証明書を検証する HTTPS、`mtls/` にはクライアント証明書も検証する mTLS を、独立した学習例として実装している。mTLS は正常なクライアント証明書による接続と、証明書なし・非信頼 CA の証明書の拒否を検証する。AWS 上の構成や本番の AC 接続仕様は、このローカル検証の対象に含めない。
+`tls/` にはサーバー証明書を検証する HTTPS、`mtls/` にはクライアント証明書も検証する mTLS を、独立した学習例として実装している。`mtls/` は正常接続と、証明書なし・非信頼 CA の証明書の拒否を検証する。`mtls_fastapi/` には FastAPI + Uvicorn による別のサーバー実装を置き、既存クライアントで正常接続と、証明書なし・非信頼 CA の証明書の拒否を検証する。AWS 上の構成や本番の AC 接続仕様は、このローカル検証の対象に含めない。
 
 実行方法は [local-mtls/README.md](../../local-mtls/README.md) を参照する。この文書には検証の目的、仕組み、結果を残す。
 
@@ -119,6 +121,31 @@ flowchart TB
 
 ## コードと証明書設定の対応
 
+### mTLS サーバーの構成比較
+
+- 比較条件：同じクライアント・証明書を使い、mTLS サーバーの構成要素を比較。
+- 矢印：リクエストの処理方向。
+
+```mermaid
+flowchart LR
+    subgraph stdlib["標準ライブラリ版：mtls/"]
+        direction TB
+        SC["mtls.client"] -->|"mTLS"| ST["ThreadingHTTPServer ＋ ssl<br/>TLS・証明書検証・HTTP の受け付け"]
+        ST -->|"ハンドラー呼び出し"| SA["HelloHandler<br/>応答を生成"]
+    end
+    subgraph fastapi["FastAPI 版：mtls_fastapi/"]
+        direction TB
+        FC["mtls.client"] -->|"mTLS"| FT["Uvicorn<br/>TLS・証明書検証・HTTP の受け付け"]
+        FT -->|"ASGI"| FA["FastAPI<br/>応答を生成"]
+    end
+    %% 非表示リンクで標準ライブラリ版を左、FastAPI 版を右に配置する。
+    stdlib ~~~ fastapi
+```
+
+- 標準ライブラリ版：`ssl` でサーバーのソケットを包み、`HelloHandler` を呼び出す。
+- FastAPI 版：Uvicorn が接続を受け付け、ASGI 経由で FastAPI を呼び出す。
+- 共通：クライアント証明書の検証後に、同じ応答本文を返す。
+
 ### HTTPS の実装
 
 | ファイル | 主な処理 |
@@ -133,6 +160,21 @@ flowchart TB
 | [mtls/server.py](../../local-mtls/mtls/server.py) | `load_verify_locations` でクライアント検証用 CA を読み込み、`CERT_REQUIRED` で証明書の提示と検証を必須にする |
 | [mtls/client.py](../../local-mtls/mtls/client.py) | `load_cert_chain` で自分の証明書と秘密鍵を追加する。サーバー証明書の検証も行う |
 
+### FastAPI と Uvicorn の実装
+
+HTTP の応答処理を FastAPI、ポートの待ち受けと TLS の処理を Uvicorn に分ける。クライアントと証明書を共通にして、サーバーだけを置き換える。
+
+| ファイル | 役割 |
+| --- | --- |
+| [mtls_fastapi/app.py](../../local-mtls/mtls_fastapi/app.py) | `GET /` に対して `PlainTextResponse` を返す。本文と改行は標準ライブラリ版と同じ |
+| [mtls_fastapi/server.py](../../local-mtls/mtls_fastapi/server.py) | Uvicorn にサーバー証明書・秘密鍵・クライアント検証用 CA・証明書必須設定を渡し、FastAPI アプリを起動する |
+
+| 標準ライブラリ版の設定 | Uvicorn に渡す設定 |
+| --- | --- |
+| `load_cert_chain(certfile, keyfile)` | `ssl_certfile`・`ssl_keyfile` |
+| `load_verify_locations(cafile)` | `ssl_ca_certs` |
+| `verify_mode = ssl.CERT_REQUIRED` | `ssl_cert_reqs=ssl.CERT_REQUIRED` |
+
 ### 証明書の生成と用途
 
 | ファイル | 役割 |
@@ -141,37 +183,37 @@ flowchart TB
 | [server-ext.cnf](../../local-mtls/scripts/server-ext.cnf) | `serverAuth` で用途を指定し、SAN に `localhost` と `127.0.0.1` を含める。鍵識別子を設定して証明書チェーンの検証に使う |
 | [client-ext.cnf](../../local-mtls/scripts/client-ext.cnf) | 用途を `clientAuth` に限定し、`digitalSignature` を秘密鍵の所持証明に使う。鍵識別子を証明書チェーンの検証に使う |
 
-## 検証結果
+## 接続時の挙動
 
-### 自動テスト
+### HTTPS のサーバー認証
 
-Python 3.13.17・pytest 9.1.1 のローカル環境で、次の5件が成功した。
+`tls/` の HTTPS 版では、サーバーと接続先を固定し、クライアントが信頼する CA を変えて比較する。
 
-| ケース | 期待する結果 | 確認結果 |
+| 接続条件 | HTTP 処理 | クライアントに見える出力 |
 | --- | --- | --- |
-| サーバー証明書を発行した CA をクライアントが信頼する | HTTPS 接続が成立し、応答本文を取得できる | 成功 |
-| 別の CA をクライアントが信頼する | サーバー証明書の検証に失敗する | `SSLCertVerificationError` を確認 |
-| サーバーが信頼する CA のクライアント証明書で接続する | mTLS 接続が成立し、応答本文を取得できる | 成功 |
-| クライアント証明書を提示しない | サーバーが接続を拒否する | 証明書必須の TLS アラートを確認 |
-| 別の CA が発行したクライアント証明書を提示する | サーバーが接続を拒否する | 非信頼 CA の TLS アラートを確認 |
+| サーバー証明書の発行元 CA を信頼する | リクエストを処理し、200 と固定本文を返す | 応答本文 |
+| 別の CA を信頼する | TLS 段階でクライアントが拒否し、HTTP 処理に到達しない | `CERTIFICATE_VERIFY_FAILED` |
 
-[HTTPS のテスト](../../local-mtls/tests/test_tls.py) は別々の CA を生成して信頼関係の違いを比較し、[mTLS のテスト](../../local-mtls/tests/test_mtls.py) は証明書の提示有無と発行元による接続結果を比較する。非信頼 CA のクライアント証明書を試す場合も、クライアント側のサーバー検証用 CA は正常なままに保つ。拒否のテストでは TLS アラートの種類も確認し、接続拒否やタイムアウトなどの通信障害を認証失敗として扱わない。接続には `127.0.0.1` の一時ポートを使い、外部サーバーには接続しない。
+### mTLS のクライアント認証の比較
 
-### 手動確認
+両実装とも、クライアント・サーバー証明書・信頼する CA を共通にし、サーバー実装だけを置き換える。サーバー検証用 CA は正常なまま、提示するクライアント証明書の有無と発行元を変えて比較する。
 
-HTTPS 版で、サーバーの証明書と接続先を固定し、クライアントが信頼する CA だけを変えて接続結果を比較する。
+| 接続条件 | 両実装に共通する HTTP 処理 | 標準ライブラリ版のクライアント出力 | FastAPI + Uvicorn 版のクライアント出力 |
+| --- | --- | --- | --- |
+| 正常なクライアント証明書 | リクエストを処理し、200 と同じ固定本文を返す | `ローカル mTLS サーバーからの応答です。` | `ローカル mTLS サーバーからの応答です。` |
+| クライアント証明書なし | TLS 段階でサーバーが拒否し、HTTP 処理に到達しない | `CERTIFICATE_REQUIRED` またはハンドシェイク失敗の TLS アラート | `RemoteDisconnected` |
+| 非信頼 CA のクライアント証明書 | TLS 段階でサーバーが拒否し、HTTP 処理に到達しない | `UNKNOWN_CA` の TLS アラート | `RemoteDisconnected` |
 
-| ケース | 操作 | 確認結果 |
-| --- | --- | --- |
-| 接続成功 | サーバー証明書を発行した CA を `--cafile` に指定 | 接続に成功 |
-| 接続失敗 | 別のディレクトリに CA を生成し、その CA を `--cafile` に指定 | 接続に失敗 |
+表の出力はこの実装での例。`RemoteDisconnected` のメッセージは `Remote end closed connection without response` となる。標準ライブラリ版では TLS アラートとして見える拒否が、Uvicorn の asyncio による TLS 処理では接続切断として見える。
 
-同じサーバーでも、クライアントが信頼する CA によって接続結果が変わる。操作手順は [README の証明書検証失敗の確認](../../local-mtls/README.md#証明書検証失敗の確認) を参照する。
+両実装とも拒否時に HTTP のエラー応答は返さず、正常な証明書による接続は引き続き受け付ける。FastAPI の処理も呼び出されないため、401 や 403 は返らない。TLS バージョンや実行環境によってはアラートや接続リセットなど表記が変わるので、例外名だけから拒否理由を特定することはできない。
 
-mTLS では、サーバー証明書の検証用 CA を固定し、クライアント証明書の提示有無と発行元による接続結果を比較する。操作手順と期待する結果は [README の mTLS の確認](../../local-mtls/README.md#mtls-の確認) を参照する。
+操作手順は [HTTPS の確認](../../local-mtls/README.md#https-の確認)、[mTLS の確認](../../local-mtls/README.md#mtls-の確認)、[FastAPI と Uvicorn による mTLS の確認](../../local-mtls/README.md#fastapi-と-uvicorn-による-mtls-の確認) を参照する。
+
+### 検証の範囲
+
+[HTTPS のテスト](../../local-mtls/tests/test_tls.py) はサーバー証明書の発行元による違い、[mTLS のテスト](../../local-mtls/tests/test_mtls.py) はクライアント証明書の提示有無と発行元による違いを検証する。
+
+[FastAPI 版のテスト](../../local-mtls/tests/test_mtls_fastapi.py) は実際の Uvicorn に接続し、拒否したリクエストが HTTP 処理へ到達しないことと、拒否前後の正常接続を検証する。接続拒否やタイムアウト、クライアント側のサーバー証明書検証失敗は、クライアント認証の拒否として扱わない。
 
 ホスト名不一致や有効期限切れは個別のテストにしていない。
-
-## 次に検証すること
-
-- 成功・失敗した理由を、Python の TLS 設定と OpenSSL の表示に対応づけて記録する。
