@@ -4,7 +4,17 @@
 
 - [目的と対象](#目的と対象)
 - [現在の構成](#現在の構成)
+- [HTTPS と mTLS の違い](#https-と-mtls-の違い)
+  - [証明書の提示と検証の方向](#証明書の提示と検証の方向)
+  - [認証に関係するコード差分](#認証に関係するコード差分)
+    - [サーバー側](#サーバー側)
+    - [クライアント側](#クライアント側)
+    - [引数と設定](#引数と設定)
+  - [アプリケーションと TLS の役割](#アプリケーションと-tls-の役割)
 - [コードと証明書設定の対応](#コードと証明書設定の対応)
+  - [HTTPS の実装](#https-の実装)
+  - [mTLS の実装](#mtls-の実装)
+  - [証明書の生成と用途](#証明書の生成と用途)
 - [検証結果](#検証結果)
   - [自動テスト](#自動テスト)
   - [手動確認](#手動確認)
@@ -38,15 +48,98 @@ AC と RA 間の HTTPS 通信で使うクライアント証明書認証を理解
 
 手動実行用のファイルは `local-mtls/certs/generated/` に生成する。生成物は Git 管理対象外とし、設定ファイルとスクリプトから作り直せるようにしている。テストでは一時ディレクトリに生成し、テスト終了後に削除する。
 
+## HTTPS と mTLS の違い
+
+ここでは、`tls/` のサーバー証明書だけを使う HTTPS と、`mtls/` のクライアント証明書も使う HTTPS を比較する。mTLS でも HTTP のリクエスト・レスポンスは同じ仕組みで、TLS 接続時の認証設定が異なる。
+
+### 証明書の提示と検証の方向
+
+矢印は証明書を提示する方向を示す。受け取る側は、あらかじめ信頼する CA を設定して相手の証明書を検証する。TLS ハンドシェイクの全メッセージや送信順序は省略している。
+
+```mermaid
+flowchart TB
+    subgraph tls["HTTPS：サーバー証明書による認証"]
+        TC["クライアント<br/>サーバー証明書を検証"]
+        TS["サーバー<br/>自分の証明書と秘密鍵を保持"]
+        TS -->|"サーバー証明書を提示"| TC
+    end
+    subgraph mtls["mTLS：相互に証明書で認証"]
+        MC["クライアント<br/>サーバー証明書を検証<br/>自分の証明書と秘密鍵を保持"]
+        MS["サーバー<br/>自分の証明書と秘密鍵を保持<br/>クライアント証明書を検証"]
+        MS -->|"サーバー証明書を提示"| MC
+        MC -->|"クライアント証明書を提示"| MS
+    end
+```
+
+秘密鍵は相手に送らない。TLS の中で署名に使い、提示した証明書に対応する秘密鍵を持つことを証明する。
+
+### 認証に関係するコード差分
+
+#### サーバー側
+
+サーバー側では、自分の証明書を読み込む既存の処理に、クライアント検証用 CA と証明書必須の設定を追加する。
+
+```diff
+ context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+ context.load_cert_chain(certfile=str(certfile), keyfile=str(keyfile))
++context.load_verify_locations(cafile=str(cafile))
++context.verify_mode = ssl.CERT_REQUIRED
+```
+
+#### クライアント側
+
+サーバーを検証する既存の設定に、自分の証明書と秘密鍵の読み込みを追加する。
+
+```diff
+ context = ssl.create_default_context(cafile=str(cafile))
++context.load_cert_chain(certfile=str(certfile), keyfile=str(keyfile))
+```
+
+#### 引数と設定
+
+| 追加設定 | 役割 | 入力するファイル |
+| --- | --- | --- |
+| サーバーの `load_verify_locations` | クライアント証明書の発行元として信頼する CA を指定 | `--client-ca` の CA 証明書 |
+| サーバーの `CERT_REQUIRED` | クライアント証明書の提示と検証を必須にする | なし |
+| クライアントの `load_cert_chain` | 自分の証明書と対応する秘密鍵を読み込む | `--certfile`・`--keyfile` |
+
+この追加に合わせて関数と CLI の引数を増やしている。応答文言・クラス名・既定ポートの違いは、学習例を区別するための変更であり、mTLS の認証要件ではない。
+
+### アプリケーションと TLS の役割
+
+追加コードが少ないのは、証明書の送受信や暗号処理を Python の `ssl` と内部の OpenSSL が担うため。
+
+| 担当 | 役割 |
+| --- | --- |
+| アプリケーションの TLS 設定 | 自分の証明書・秘密鍵、信頼する CA、クライアント証明書を必須にするかを指定 |
+| `ssl`・OpenSSL | TLS ハンドシェイク、証明書の検証、秘密鍵を持つことの証明、暗号化通信を実行 |
+| アプリケーションの認可処理 | 認証された相手に許可する操作を決める。今回の POC では未実装 |
+
+今回のサーバーは、信頼する CA によるクライアント証明書の検証が通ると固定メッセージを返す。個々のクライアントに操作権限を割り当てる認可は、証明書による認証とは別の処理になる。
+
 ## コードと証明書設定の対応
 
-- [tls/server.py](../../local-mtls/tls/server.py) の `load_cert_chain` でサーバー証明書と秘密鍵を読み込み、`wrap_socket` で HTTP サーバーのソケットに TLS を追加する。
-- [tls/client.py](../../local-mtls/tls/client.py) の `create_default_context(cafile=...)` で信頼する CA 証明書を指定する。証明書検証と接続先のホスト名検証を有効にして接続する。
-- [mtls/server.py](../../local-mtls/mtls/server.py) では `load_verify_locations` でクライアント検証用 CA を読み込み、`CERT_REQUIRED` で証明書の提示と検証を必須にする。
-- [mtls/client.py](../../local-mtls/mtls/client.py) では `load_cert_chain` で自分の証明書と秘密鍵を追加する。サーバー証明書の検証も行う。
-- [generate-certs.sh](../../local-mtls/scripts/generate-certs.sh) で CA とサーバー・クライアント証明書を生成する。
-- [server-ext.cnf](../../local-mtls/scripts/server-ext.cnf) は、署名時にサーバー証明書へ付ける X.509 拡張設定。`serverAuth` で用途を指定し、SAN に接続先の `localhost` と `127.0.0.1` を含める。鍵識別子も設定して、証明書チェーンの検証に使えるようにしている。
-- [client-ext.cnf](../../local-mtls/scripts/client-ext.cnf) は、クライアント証明書の用途を `clientAuth` に限定する。`digitalSignature` で秘密鍵を持つことの証明に使い、鍵識別子を証明書チェーンの検証に使う。
+### HTTPS の実装
+
+| ファイル | 主な処理 |
+| --- | --- |
+| [tls/server.py](../../local-mtls/tls/server.py) | `load_cert_chain` でサーバー証明書と秘密鍵を読み込み、`wrap_socket` で HTTP サーバーのソケットに TLS を追加する |
+| [tls/client.py](../../local-mtls/tls/client.py) | `create_default_context(cafile=...)` で信頼する CA を指定し、証明書検証と接続先のホスト名検証を有効にする |
+
+### mTLS の実装
+
+| ファイル | HTTPS 版から追加する処理 |
+| --- | --- |
+| [mtls/server.py](../../local-mtls/mtls/server.py) | `load_verify_locations` でクライアント検証用 CA を読み込み、`CERT_REQUIRED` で証明書の提示と検証を必須にする |
+| [mtls/client.py](../../local-mtls/mtls/client.py) | `load_cert_chain` で自分の証明書と秘密鍵を追加する。サーバー証明書の検証も行う |
+
+### 証明書の生成と用途
+
+| ファイル | 役割 |
+| --- | --- |
+| [generate-certs.sh](../../local-mtls/scripts/generate-certs.sh) | CA とサーバー・クライアント証明書を生成する |
+| [server-ext.cnf](../../local-mtls/scripts/server-ext.cnf) | `serverAuth` で用途を指定し、SAN に `localhost` と `127.0.0.1` を含める。鍵識別子を設定して証明書チェーンの検証に使う |
+| [client-ext.cnf](../../local-mtls/scripts/client-ext.cnf) | 用途を `clientAuth` に限定し、`digitalSignature` を秘密鍵の所持証明に使う。鍵識別子を証明書チェーンの検証に使う |
 
 ## 検証結果
 
