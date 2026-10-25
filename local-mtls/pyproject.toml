@@ -4,9 +4,10 @@ name = "local-mtls"
 version = "0.1.0"
 description = "ローカル環境で TLS と mTLS を学ぶためのサンプル"
 requires-python = ">=3.13"
-# FastAPI + Uvicorn 版で使う依存関係。tls/ と mtls/ は標準ライブラリのみで動作します。
+# FastAPI + Uvicorn 版サーバーと Requests 版クライアントで使う依存関係。
 dependencies = [
     "fastapi>=0.162.0",
+    "requests>=2.34.2",
     "uvicorn>=0.54.0",
 ]
 
