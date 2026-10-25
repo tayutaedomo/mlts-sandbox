@@ -36,6 +36,21 @@ openssl x509 -req -sha256 -days 365 \
   -extfile "$SCRIPT_DIR/server-ext.cnf" \
   -out "$OUTPUT_DIR/server.crt"
 
+# クライアント用の秘密鍵と CSR を作り、サーバー証明書と同じ CA で署名する。
+# 用途は client-ext.cnf でクライアント認証用に限定する。
+openssl req -new -newkey rsa:2048 -nodes \
+  -keyout "$OUTPUT_DIR/client.key" \
+  -out "$OUTPUT_DIR/client.csr" \
+  -subj "/CN=local-client"
+
+openssl x509 -req -sha256 -days 365 \
+  -in "$OUTPUT_DIR/client.csr" \
+  -CA "$OUTPUT_DIR/ca.crt" \
+  -CAkey "$OUTPUT_DIR/ca.key" \
+  -CAserial "$OUTPUT_DIR/ca.srl" \
+  -extfile "$SCRIPT_DIR/client-ext.cnf" \
+  -out "$OUTPUT_DIR/client.crt"
+
 # 秘密鍵のアクセス権を明示的に所有者のみへ制限する。
-chmod 600 "$OUTPUT_DIR/ca.key" "$OUTPUT_DIR/server.key"
-printf 'Generated CA and server certificates in %s\n' "$OUTPUT_DIR"
+chmod 600 "$OUTPUT_DIR/ca.key" "$OUTPUT_DIR/server.key" "$OUTPUT_DIR/client.key"
+printf 'CA・サーバー・クライアント証明書を %s に生成しました\n' "$OUTPUT_DIR"
