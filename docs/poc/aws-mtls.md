@@ -141,6 +141,8 @@ flowchart TB
 - Regional カスタムドメインの ACM 証明書は、API と同じリージョンに配置する。
 - ACM 検証用 CNAME は、証明書の自動更新にも使用する。
 
+証明書は [証明書用 Terraform](../../aws-mtls/infra/certificate/main.tf) で申請し、検証用 CNAME を出力する。申請と発行待ちを分けることで、外部 DNS を手動設定できる。DNS 登録後は AWS CLI で `ISSUED` を確認する。実行手順は [ACM サーバー証明書](../../aws-mtls/infra/certificate/README.md) を参照。
+
 ### 証明書の提示と検証
 
 | 証明書 | 提示する側 | 検証する側 | 信頼する発行元 |

@@ -24,6 +24,7 @@ jobs:
       local_mtls: ${{ steps.filter.outputs.local_mtls }}
       lambda: ${{ steps.filter.outputs.lambda }}
       cloudformation: ${{ steps.filter.outputs.cloudformation }}
+      certificate: ${{ steps.filter.outputs.certificate }}
 
     steps:
       # push は直前の状態との差分、PR は GitHub API による PR 全体の差分を使う。
@@ -57,6 +58,10 @@ jobs:
               - 'aws-mtls/infra/state/**'
               - 'aws-mtls/pyproject.toml'
               - 'aws-mtls/uv.lock'
+              - '!**/*.md'
+            certificate:
+              - '.github/workflows/**'
+              - 'aws-mtls/infra/certificate/**'
               - '!**/*.md'
 
   local-mtls:
@@ -177,3 +182,39 @@ jobs:
       # AWS 接続なしで、CloudFormation のリソーススキーマなどに照らして検査する。
       - name: CloudFormation を静的検査
         run: uv run --locked cfn-lint infra/state/template.yaml
+
+  certificate:
+    name: ACM 証明書の Terraform 検査
+    needs: changes
+    if: >-
+      !cancelled() &&
+      (needs.changes.result == 'failure' ||
+       github.event_name == 'workflow_dispatch' ||
+       needs.changes.outputs.certificate == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: aws-mtls/infra/certificate
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Terraform を準備
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: latest
+
+      - name: 整形をチェック
+        run: terraform fmt -check -recursive
+
+      # S3 backend と AWS API は使わず、公開 Registry からプロバイダーだけを取得する。
+      - name: プロバイダーを初期化
+        run: terraform init -backend=false -input=false -lockfile=readonly
+
+      - name: 構文とプロバイダーの設定を検査
+        run: terraform validate
+
+      - name: モックで証明書の申請設定を検証
+        run: terraform test

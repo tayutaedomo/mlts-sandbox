@@ -46,3 +46,14 @@ htmlcov/
 
 # Jupyter のチェックポイント
 .ipynb_checkpoints/
+
+# Terraform のローカル初期化情報・実環境の設定・state・保存した plan
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+backend.hcl
+crash.log
+crash.*.log

@@ -7,6 +7,7 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 - [目的と概要](#目的と概要)
 - [構成](#構成)
 - [state 用 S3 の構築](#state-用-s3-の構築)
+- [ACM サーバー証明書の申請](#acm-サーバー証明書の申請)
 - [実行環境と準備](#実行環境と準備)
 - [イベントからの呼び出し](#イベントからの呼び出し)
   - [確認の流れ](#確認の流れ)
@@ -20,9 +21,10 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 ## 目的と概要
 
 - サンプルイベントをハンドラーへ直接渡し、Lambda イベントと HTTP 応答の変換を理解する。
-- AWS への接続や HTTP サーバーの起動をせず、ローカルの Python で実行する。
+- イベント変換は AWS への接続や HTTP サーバーの起動をせず、ローカルの Python で確認する。
 - アプリと実行依存をまとめ、Python 3.13・Linux arm64 用の Lambda 配布 ZIP を作成する。
 - state 用 S3 は CloudFormation で作成し、保存先の初期構築をアプリから分離する。
+- サーバー証明書は専用の Terraform で申請し、外部 DNS の CNAME で所有確認する。
 
 | 検証対象 | 確認する内容 |
 | --- | --- |
@@ -44,9 +46,10 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 │   ├── app.py                # FastAPI：HTTP のパス・メソッドと応答
 │   └── handler.py            # Mangum：Lambda イベントと ASGI の変換
 ├── infra/
-│   └── state/
-│       ├── template.yaml     # CloudFormation：state 用 S3 とバケットポリシー
-│       └── README.md         # 作成・設定確認・削除の手順
+│   ├── state/
+│   │   ├── template.yaml     # CloudFormation：state 用 S3 とバケットポリシー
+│   │   └── README.md         # 作成・設定確認・削除の手順
+│   └── certificate/          # Terraform：ACM 証明書と検証用 CNAME の出力
 ├── scripts/
 │   └── build-lambda.sh       # uv で Linux arm64 向けの依存を取得し ZIP 化
 ├── tests/
@@ -63,6 +66,10 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 ## state 用 S3 の構築
 
 [state 基盤の手順](infra/state/README.md) に、CloudFormation による作成、暗号化・公開遮断などの設定確認、スタックの削除方法を記載しています。この操作には AWS CLI と AWS 認証が必要です。
+
+## ACM サーバー証明書の申請
+
+[証明書の手順](infra/certificate/README.md) に、Terraform の S3 backend 設定、証明書の申請、外部 DNS への CNAME 登録、発行確認と削除を記載しています。AWS CLI・Terraform・AWS 認証を使用します。
 
 ## 実行環境と準備
 
