@@ -26,3 +26,4 @@
 - [ローカル環境のセットアップ・実行・テスト・Ruff の手順](local-mtls/README.md)
 - [AWS 用 Lambda アプリの実行・検証手順](aws-mtls/README.md)
 - [Lambda 用アプリのイベント変換の検証記録](docs/poc/aws-lambda.md)
+- [AWS mTLS の構成と認証の流れ](docs/poc/aws-mtls.md)

@@ -1,9 +1,10 @@
 # AWS 用 Lambda アプリ
 
-API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に渡す学習例です。現在はローカルでイベント変換と応答生成を確認します。
+API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に渡す学習例です。
 
 ## 目次
 
+- [目的と概要](#目的と概要)
 - [構成](#構成)
 - [実行環境と準備](#実行環境と準備)
 - [イベントからの呼び出し](#イベントからの呼び出し)
@@ -11,7 +12,22 @@ API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に�
   - [正常応答](#正常応答)
   - [HTTP エラー応答](#http-エラー応答)
 - [自動テストと静的検査](#自動テストと静的検査)
-- [検証の範囲](#検証の範囲)
+
+## 目的と概要
+
+- サンプルイベントをハンドラーへ直接渡し、Lambda イベントと HTTP 応答の変換を理解する。
+- AWS への接続や HTTP サーバーの起動をせず、ローカルの Python で実行する。
+
+| 検証対象 | 確認する内容 |
+| --- | --- |
+| イベント変換 | REST API イベント → ASGI → Lambda プロキシ形式の応答 |
+| HTTP の処理 | FastAPI の正常応答・404・405 |
+| ハンドラーの再利用 | 同じハンドラーの連続呼び出し |
+
+この実行方法では、実際の API Gateway と Lambda の通信や、TLS・クライアント証明書の検証は行いません。
+
+- [Lambda 用アプリのイベント変換と各要素の役割](../docs/poc/aws-lambda.md)
+- [AWS mTLS の構成と認証の流れ](../docs/poc/aws-mtls.md)
 
 ## 構成
 
@@ -147,13 +163,3 @@ uv run --locked ruff check .
 
 - イベント変換をモックせず、実際の Mangum を通して検証。
 - 整形する場合は `uv run --locked ruff format .` を実行。
-
-## 検証の範囲
-
-| ローカルで確認できること | この構成で確認できないこと |
-| --- | --- |
-| REST API イベント → ASGI → Lambda 応答の変換 | 実際の API Gateway と Lambda の通信 |
-| FastAPI の正常応答・HTTP エラー | TLS 接続・クライアント証明書の検証 |
-| 同じハンドラーの連続呼び出し | 証明書拒否時の API Gateway のログ |
-
-仕組みと役割は [Lambda 用アプリの POC 文書](../docs/poc/aws-lambda.md) を参照してください。
