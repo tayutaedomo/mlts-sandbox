@@ -1,11 +1,12 @@
-# AWS 用 Lambda アプリ
+# AWS 用 Lambda アプリと state 基盤
 
-API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に渡す学習例です。
+API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に渡す学習例です。Terraform state の保存先を作る CloudFormation テンプレートも含みます。
 
 ## 目次
 
 - [目的と概要](#目的と概要)
 - [構成](#構成)
+- [state 用 S3 の構築](#state-用-s3-の構築)
 - [実行環境と準備](#実行環境と準備)
 - [イベントからの呼び出し](#イベントからの呼び出し)
   - [確認の流れ](#確認の流れ)
@@ -17,6 +18,7 @@ API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に�
 
 - サンプルイベントをハンドラーへ直接渡し、Lambda イベントと HTTP 応答の変換を理解する。
 - AWS への接続や HTTP サーバーの起動をせず、ローカルの Python で実行する。
+- state 用 S3 は CloudFormation で作成し、保存先の初期構築をアプリから分離する。
 
 | 検証対象 | 確認する内容 |
 | --- | --- |
@@ -37,6 +39,10 @@ API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に�
 │   ├── __init__.py
 │   ├── app.py                # FastAPI：HTTP のパス・メソッドと応答
 │   └── handler.py            # Mangum：Lambda イベントと ASGI の変換
+├── infra/
+│   └── state/
+│       ├── template.yaml     # CloudFormation：state 用 S3 とバケットポリシー
+│       └── README.md         # 作成・設定確認・削除の手順
 ├── tests/
 │   ├── events/get-root.json  # 手動確認とテストで共用する REST API イベント
 │   └── test_handler.py
@@ -46,6 +52,10 @@ API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に�
 
 - Lambda の入口：`lambda_app.handler.handler(event, context)`。
 - `local-mtls/` から独立した uv プロジェクト。既存アプリの import は不要。
+
+## state 用 S3 の構築
+
+[state 基盤の手順](infra/state/README.md) に、CloudFormation による作成、暗号化・公開遮断などの設定確認、スタックの削除方法を記載しています。この操作には AWS CLI と AWS 認証が必要です。
 
 ## 実行環境と準備
 
@@ -59,7 +69,7 @@ uv sync --locked --dev --python 3.13
 ```
 
 - 実行依存：FastAPI・Mangum。
-- 開発依存：pytest・Ruff。
+- 開発依存：pytest・Ruff・cfn-lint（CloudFormation の静的検査）。
 - ハンドラーを直接呼び出すため、Uvicorn・Docker・AWS 認証情報は不要。
 
 ## イベントからの呼び出し
@@ -152,6 +162,7 @@ PY
 uv run --locked pytest
 uv run --locked ruff format --check .
 uv run --locked ruff check .
+uv run --locked cfn-lint infra/state/template.yaml
 ```
 
 | ケース | 確認する内容 |
@@ -162,4 +173,5 @@ uv run --locked ruff check .
 | 同じハンドラーを連続呼び出し | どちらも正常応答を返す |
 
 - イベント変換をモックせず、実際の Mangum を通して検証。
+- CloudFormation は cfn-lint で構造・プロパティ・値などを静的検査。作成後の設定確認は [state 基盤の手順](infra/state/README.md#設定の確認) を参照。
 - 整形する場合は `uv run --locked ruff format .` を実行。

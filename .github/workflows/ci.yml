@@ -47,7 +47,7 @@ jobs:
         run: uv run --locked pytest
 
   aws-mtls:
-    name: Lambda 用アプリの検査
+    name: Lambda 用アプリと CloudFormation の検査
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -74,6 +74,10 @@ jobs:
 
       - name: lint を実行
         run: uv run --locked ruff check .
+
+      # AWS 接続なしで、CloudFormation のリソーススキーマなどに照らして検査する。
+      - name: CloudFormation を静的検査
+        run: uv run --locked cfn-lint infra/state/template.yaml
 
       # サンプルイベントで実際の Mangum を呼び出す。AWS 接続は行わない。
       - name: テストを実行

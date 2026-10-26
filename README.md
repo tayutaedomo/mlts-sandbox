@@ -12,8 +12,9 @@
 │   ├── mtls_fastapi/   # FastAPI + Uvicorn による mTLS
 │   ├── tests/          # 証明書検証のテスト
 │   └── scripts/        # 証明書生成スクリプトと拡張設定
-├── aws-mtls/           # FastAPI + Mangum の Lambda イベント変換
+├── aws-mtls/           # Lambda イベント変換と AWS 基盤
 │   ├── lambda_app/     # FastAPI アプリと Lambda ハンドラー
+│   ├── infra/state/    # CloudFormation による Terraform state 用 S3
 │   └── tests/          # REST API イベントによる検証
 ├── docs/
 │   ├── poc/     # POC の目的、検証内容、結果の記録
@@ -26,6 +27,7 @@
 - [ローカル mTLS POC の検証記録](docs/poc/local-mtls.md)
 - [ローカル環境のセットアップ・実行・テスト・Ruff の手順](local-mtls/README.md)
 - [AWS 用 Lambda アプリの実行・検証手順](aws-mtls/README.md)
+- [Terraform state 用 S3 の作成・設定確認・削除](aws-mtls/infra/state/README.md)
 - [Lambda 用アプリのイベント変換の検証記録](docs/poc/aws-lambda.md)
 - [AWS mTLS の構成と認証の流れ](docs/poc/aws-mtls.md)
 - [Lambda の配布方式に ZIP を採用する](docs/adr/0001-lambda-zip-deployment.md)
