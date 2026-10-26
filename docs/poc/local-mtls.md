@@ -240,13 +240,14 @@ HTTP の応答処理を FastAPI、ポートの待ち受けと TLS の処理を U
 | サーバー | 接続条件 | 共通の HTTP 処理 | urllib 版の出力 | Requests 版の出力 |
 | --- | --- | --- | --- | --- |
 | 両サーバー | 正常なクライアント証明書 | 200 と同じ固定本文を返す | `ローカル mTLS サーバーからの応答です。` | `ローカル mTLS サーバーからの応答です。` |
-| 標準ライブラリ版 | クライアント証明書なし | TLS 段階で拒否、HTTP 処理なし | `ssl.SSLError`（`URLError` 内の場合もある）：`CERTIFICATE_REQUIRED` など | `requests.exceptions.SSLError`：`CERTIFICATE_REQUIRED` など |
-| 標準ライブラリ版 | 非信頼 CA のクライアント証明書 | TLS 段階で拒否、HTTP 処理なし | `ssl.SSLError`（`URLError` 内の場合もある）：`UNKNOWN_CA` | `requests.exceptions.SSLError`：`UNKNOWN_CA` |
+| 標準ライブラリ版 | クライアント証明書なし | TLS 段階で拒否、HTTP 処理なし | TLS アラート：`CERTIFICATE_REQUIRED` など、または `ConnectionResetError`（`URLError` 内の場合もある） | `requests.exceptions.SSLError`：同種の TLS アラート、または `ConnectionError`：接続リセット |
+| 標準ライブラリ版 | 非信頼 CA のクライアント証明書 | TLS 段階で拒否、HTTP 処理なし | TLS アラート：`UNKNOWN_CA`、または `ConnectionResetError`（`URLError` 内の場合もある） | `requests.exceptions.SSLError`：`UNKNOWN_CA`、または `ConnectionError`：接続リセット |
 | FastAPI 版 | クライアント証明書なし | TLS 段階で拒否、HTTP 処理なし | `http.client.RemoteDisconnected` | `requests.exceptions.ConnectionError`：内部に `RemoteDisconnected` |
 | FastAPI 版 | 非信頼 CA のクライアント証明書 | TLS 段階で拒否、HTTP 処理なし | `http.client.RemoteDisconnected` | `requests.exceptions.ConnectionError`：内部に `RemoteDisconnected` |
 | 両サーバー | サーバー検証用 CA が不正（自分の証明書は正常） | クライアントが TLS 段階で拒否、HTTP 処理なし | `URLError` 内の `SSLCertVerificationError`：`CERTIFICATE_VERIFY_FAILED` | `requests.exceptions.SSLError`：`CERTIFICATE_VERIFY_FAILED` |
 
 - 出力はこの実装での例。TLS バージョンや実行環境でアラート・切断・リセットなど表記が変わる。
+- 証明書拒否の TLS アラートをクライアントが読み取ると `SSLError` になる。一方、拒否後の切断と HTTP リクエストの送信が重なると、送信中に `ConnectionResetError` を受け取る場合がある。
 - `RemoteDisconnected` のメッセージ：`Remote end closed connection without response`。
 - 拒否時は HTTP の 401・403 を返さず、FastAPI も呼び出されない。
 - 拒否後もサーバーは正常な証明書による接続を受け付ける。
@@ -259,6 +260,8 @@ HTTP の応答処理を FastAPI、ポートの待ち受けと TLS の処理を U
 [HTTPS の Requests 版テスト](../../local-mtls/tests/test_tls_requests.py) は、既存の HTTPS サーバーで正常接続と非信頼 CA によるサーバー認証失敗を検証する。手順は [HTTPS の確認](../../local-mtls/README.md#https-の確認) を参照する。
 
 [HTTPS のテスト](../../local-mtls/tests/test_tls.py) はサーバー証明書の発行元による違い、[mTLS のテスト](../../local-mtls/tests/test_mtls.py) はクライアント証明書の提示有無と発行元による違いを検証する。
+
+標準ライブラリ版では、テスト内でサーバーの TLS 拒否理由と HTTP 到達を記録し、拒否前後にも正常接続する。クライアントが接続リセットを受けても、サーバー側の証明書拒否と照合するため、単なる通信障害を成功扱いしない。実接続で拒否された後に例外を接続リセットへ置き換えるケースも設け、切断の見え方が変わる条件を確実に検証する。
 
 [FastAPI 版のテスト](../../local-mtls/tests/test_mtls_fastapi.py) は実際の Uvicorn に接続し、拒否したリクエストが HTTP 処理へ到達しないことと、拒否前後の正常接続を検証する。接続拒否やタイムアウト、クライアント側のサーバー証明書検証失敗は、クライアント認証の拒否として扱わない。
 
