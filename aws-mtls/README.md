@@ -1,6 +1,6 @@
-# AWS 用 Lambda アプリと state 基盤
+# AWS mTLS
 
-API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に渡す学習例です。Terraform state の保存先を作る CloudFormation テンプレートも含みます。
+FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用のコードと手順をまとめています。
 
 ## 目次
 
@@ -12,12 +12,16 @@ API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に�
   - [確認の流れ](#確認の流れ)
   - [正常応答](#正常応答)
   - [HTTP エラー応答](#http-エラー応答)
+- [Lambda 用 ZIP のビルド](#lambda-用-zip-のビルド)
+  - [ビルドの流れと対象](#ビルドの流れと対象)
+  - [生成と内容の確認](#生成と内容の確認)
 - [自動テストと静的検査](#自動テストと静的検査)
 
 ## 目的と概要
 
 - サンプルイベントをハンドラーへ直接渡し、Lambda イベントと HTTP 応答の変換を理解する。
 - AWS への接続や HTTP サーバーの起動をせず、ローカルの Python で実行する。
+- アプリと実行依存をまとめ、Python 3.13・Linux arm64 用の Lambda 配布 ZIP を作成する。
 - state 用 S3 は CloudFormation で作成し、保存先の初期構築をアプリから分離する。
 
 | 検証対象 | 確認する内容 |
@@ -43,9 +47,12 @@ API Gateway REST API の Lambda イベントを、Mangum 経由で FastAPI に�
 │   └── state/
 │       ├── template.yaml     # CloudFormation：state 用 S3 とバケットポリシー
 │       └── README.md         # 作成・設定確認・削除の手順
+├── scripts/
+│   └── build-lambda.sh       # uv で Linux arm64 向けの依存を取得し ZIP 化
 ├── tests/
 │   ├── events/get-root.json  # 手動確認とテストで共用する REST API イベント
 │   └── test_handler.py
+├── dist/                     # 生成した lambda.zip（Git 管理対象外）
 ├── pyproject.toml
 └── uv.lock
 ```
@@ -156,6 +163,62 @@ PY
 - FastAPI が HTTP エラーを生成し、Mangum が Lambda プロキシ形式に変換。
 - ここでの 404・405 は HTTP の処理結果。証明書検証による接続拒否とは別のもの。
 
+## Lambda 用 ZIP のビルド
+
+### ビルドの流れと対象
+
+```mermaid
+flowchart TD
+    A["uv.lock：実行依存のバージョン・ハッシュ"] --> B["uv export：開発依存を除いて書き出す"]
+    B --> C["uv pip install：Linux arm64 用 wheel を一時領域に配置"]
+    D["lambda_app/：Python のアプリコード"] --> E["アプリと依存を同じ階層にまとめる"]
+    C --> E
+    E --> F["dist/lambda.zip：Lambda 用の配布物"]
+```
+
+| 項目 | 対象・動作 |
+| --- | --- |
+| 実行環境 | Lambda の Python 3.13・arm64 |
+| wheel の対象 | `aarch64-manylinux2014`。glibc 2.17 以降に対応する Linux arm64 |
+| 依存の取得 | `uv.lock` の実行依存をハッシュ検証して取得。Mac の `.venv` はコピーしない |
+| アプリ | `lambda_app/` の `.py` ファイル |
+| 除外 | 開発依存・テスト・インフラ・キャッシュ・依存パッケージの CLI |
+| 出力 | `dist/lambda.zip`。ファイルの順序・日時・権限を揃え、同じビルド環境・内容なら同じハッシュになる |
+| 失敗時 | 対応 wheel がなければ停止。既存の ZIP を維持し、一時領域を削除 |
+
+ZIP のルートに `lambda_app/` と `fastapi/`・`mangum/` などの依存が並びます。Lambda のハンドラー名は `lambda_app.handler.handler` です。
+
+### 生成と内容の確認
+
+`aws-mtls/` で実行します。uv と `zip`・`unzip` を用意してください。依存の取得にはネットワーク接続が必要です。Docker・AWS 認証は不要です。
+
+```sh
+sh scripts/build-lambda.sh
+unzip -tq dist/lambda.zip
+```
+
+アプリとネイティブライブラリの格納位置を確認します。
+
+```sh
+uv run --locked python - <<'PY'
+from zipfile import ZipFile
+
+with ZipFile("dist/lambda.zip") as archive:
+    for name in archive.namelist():
+        if name.startswith("lambda_app/") or name.endswith(".so"):
+            print(name)
+PY
+```
+
+| ZIP 内のパス | 内容 |
+| --- | --- |
+| `lambda_app/__init__.py`・`app.py`・`handler.py` | アプリと Lambda の入口 |
+| `pydantic_core/…aarch64-linux-gnu.so` | Pydantic が使う Linux arm64 用のネイティブライブラリ |
+
+- Mac 上でのイベント呼び出しは、前述の `.venv` を使う手順で確認します。
+- この ZIP は Linux 向けです。内容の検査と、Lambda 上での起動確認は別の検証になります。
+- 配布方式の判断は [ZIP 配布の ADR](../docs/adr/0001-lambda-zip-deployment.md)、作成方法の仕様は [AWS の Python ZIP](https://docs.aws.amazon.com/lambda/latest/dg/python-package.html) と [uv の Lambda ガイド](https://docs.astral.sh/uv/guides/integration/aws-lambda/) を参照してください。
+
 ## 自動テストと静的検査
 
 ```sh
@@ -173,5 +236,6 @@ uv run --locked cfn-lint infra/state/template.yaml
 | 同じハンドラーを連続呼び出し | どちらも正常応答を返す |
 
 - イベント変換をモックせず、実際の Mangum を通して検証。
+- ZIP は CI で実際にビルドし、`unzip -tq` でアーカイブの整合性を確認。
 - CloudFormation は cfn-lint で構造・プロパティ・値などを静的検査。作成後の設定確認は [state 基盤の手順](infra/state/README.md#設定の確認) を参照。
 - 整形する場合は `uv run --locked ruff format .` を実行。

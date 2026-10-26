@@ -21,6 +21,7 @@
 ├── aws-mtls/           # Lambda イベント変換と AWS 基盤
 │   ├── lambda_app/     # FastAPI アプリと Lambda ハンドラー
 │   ├── infra/state/    # CloudFormation による Terraform state 用 S3
+│   ├── scripts/        # Lambda 用 ZIP のビルド
 │   └── tests/          # REST API イベントによる検証
 ├── docs/
 │   ├── poc/     # POC の目的、検証内容、結果の記録
@@ -45,7 +46,7 @@
 | 変更箇所 | 実行する検査 |
 | --- | --- |
 | `local-mtls/` | ローカル mTLS の pytest・Ruff |
-| `aws-mtls/`（`infra/` を除く） | Lambda 用アプリの pytest・Ruff |
+| `aws-mtls/`（`infra/` を除く） | Lambda 用アプリの pytest・Ruff・ZIP ビルド |
 | `aws-mtls/infra/state/` | CloudFormation の cfn-lint |
 | `aws-mtls/pyproject.toml`・`uv.lock` | Lambda 用アプリと CloudFormation の両方 |
 | `.github/workflows/` | 全検査 |

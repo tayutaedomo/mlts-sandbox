@@ -139,6 +139,12 @@ jobs:
       - name: テストを実行
         run: uv run --locked pytest
 
+      # ランナーの CPU にかかわらず、Lambda の Linux arm64 用 wheel を取得する。
+      - name: Lambda 用 ZIP をビルドして整合性を確認
+        run: |
+          sh scripts/build-lambda.sh
+          unzip -tq dist/lambda.zip
+
   cloudformation:
     name: CloudFormation の検査
     needs: changes
