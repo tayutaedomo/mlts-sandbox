@@ -114,6 +114,7 @@ terraform output -json validation_records
 
 - これは所有確認用のレコードです。API に接続するための CNAME とは別です。
 - CNAME は証明書の利用中、自動更新のため保持します。
+- 値の末尾の `.` を自動で補う入力欄では、ACM の出力から末尾の `.` だけを除いて入力します。
 
 ### 発行状況の確認
 
@@ -160,3 +161,9 @@ terraform test
 モックを使うテストは、申請するドメイン・DNS 検証・鍵・エクスポート設定を確認します。実際の証明書発行や DNS・IAM の検証は、上記の申請と発行確認で行います。S3 backend で初期化済みの作業ディレクトリとは別のコピーで、このローカル検証を実行してください。
 
 S3 ロックと必要な権限は [Terraform の S3 backend](https://developer.hashicorp.com/terraform/language/backend/s3) を参照してください。
+
+プロバイダーの更新後は、開発環境の Mac arm64 と CI の Linux amd64 のハッシュをロックファイルへ記録します。
+
+```sh
+terraform providers lock -platform=darwin_arm64 -platform=linux_amd64
+```
