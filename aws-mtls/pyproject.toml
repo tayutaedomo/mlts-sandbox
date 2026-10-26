@@ -10,9 +10,10 @@ dependencies = [
     "mangum>=0.22.0",
 ]
 
-# pytest と Ruff はテスト・コード整形・静的検査に使う開発用依存関係です。
+# pytest と Ruff はテスト・整形・静的検査、cfn-lint は CloudFormation の静的検査に使います。
 [dependency-groups]
 dev = [
+    "cfn-lint>=1.58.0",
     "pytest>=8.0,<10",
     "ruff>=0.17.2",
 ]

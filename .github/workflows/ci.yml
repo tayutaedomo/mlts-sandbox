@@ -12,8 +12,67 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: 変更範囲の判定
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # PR 全体の変更ファイル一覧を読み取るため、このジョブだけに付与する。
+      pull-requests: read
+    outputs:
+      local_mtls: ${{ steps.filter.outputs.local_mtls }}
+      lambda: ${{ steps.filter.outputs.lambda }}
+      cloudformation: ${{ steps.filter.outputs.cloudformation }}
+      certificate: ${{ steps.filter.outputs.certificate }}
+
+    steps:
+      # push は直前の状態との差分、PR は GitHub API による PR 全体の差分を使う。
+      - name: push の比較用に履歴を取得
+        if: github.event_name == 'push'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: 変更ファイルから検査対象を判定
+        if: github.event_name != 'workflow_dispatch'
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          # push では同じブランチを指定し、push に含まれる全コミットを比較する。
+          base: ${{ github.event_name == 'push' && github.ref || '' }}
+          # 対象パスのいずれかに一致し、除外パスには一致しないファイルを選ぶ。
+          predicate-quantifier: some-with-excludes
+          filters: |
+            local_mtls:
+              - '.github/workflows/**'
+              - 'local-mtls/**'
+              - '!**/*.md'
+            lambda:
+              - '.github/workflows/**'
+              - 'aws-mtls/**'
+              - '!aws-mtls/infra/**'
+              - '!**/*.md'
+            cloudformation:
+              - '.github/workflows/**'
+              - 'aws-mtls/infra/state/**'
+              - 'aws-mtls/pyproject.toml'
+              - 'aws-mtls/uv.lock'
+              - '!**/*.md'
+            certificate:
+              - '.github/workflows/**'
+              - 'aws-mtls/infra/certificate/**'
+              - '!**/*.md'
+
   local-mtls:
     name: ローカル mTLS の検査
+    needs: changes
+    # 手動実行・変更判定失敗時は全検査を行う。キャンセル時は起動しない。
+    if: >-
+      !cancelled() &&
+      (needs.changes.result == 'failure' ||
+       github.event_name == 'workflow_dispatch' ||
+       needs.changes.outputs.local_mtls == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -48,6 +107,12 @@ jobs:
 
   aws-mtls:
     name: Lambda 用アプリの検査
+    needs: changes
+    if: >-
+      !cancelled() &&
+      (needs.changes.result == 'failure' ||
+       github.event_name == 'workflow_dispatch' ||
+       needs.changes.outputs.lambda == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -78,3 +143,78 @@ jobs:
       # サンプルイベントで実際の Mangum を呼び出す。AWS 接続は行わない。
       - name: テストを実行
         run: uv run --locked pytest
+
+      # ランナーの CPU にかかわらず、Lambda の Linux arm64 用 wheel を取得する。
+      - name: Lambda 用 ZIP をビルドして整合性を確認
+        run: |
+          sh scripts/build-lambda.sh
+          unzip -tq dist/lambda.zip
+
+  cloudformation:
+    name: CloudFormation の検査
+    needs: changes
+    if: >-
+      !cancelled() &&
+      (needs.changes.result == 'failure' ||
+       github.event_name == 'workflow_dispatch' ||
+       needs.changes.outputs.cloudformation == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: aws-mtls
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: uv と Python 3.13 を準備
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.13.4"
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: aws-mtls/uv.lock
+
+      - name: 開発用依存関係を同期
+        run: uv sync --locked --dev
+
+      # AWS 接続なしで、CloudFormation のリソーススキーマなどに照らして検査する。
+      - name: CloudFormation を静的検査
+        run: uv run --locked cfn-lint infra/state/template.yaml
+
+  certificate:
+    name: ACM 証明書の Terraform 検査
+    needs: changes
+    if: >-
+      !cancelled() &&
+      (needs.changes.result == 'failure' ||
+       github.event_name == 'workflow_dispatch' ||
+       needs.changes.outputs.certificate == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: aws-mtls/infra/certificate
+
+    steps:
+      - name: ソースコードを取得
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Terraform を準備
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: latest
+
+      - name: 整形をチェック
+        run: terraform fmt -check -recursive
+
+      # S3 backend と AWS API は使わず、公開 Registry からプロバイダーだけを取得する。
+      - name: プロバイダーを初期化
+        run: terraform init -backend=false -input=false -lockfile=readonly
+
+      - name: 構文とプロバイダーの設定を検査
+        run: terraform validate
+
+      - name: モックで証明書の申請設定を検証
+        run: terraform test
