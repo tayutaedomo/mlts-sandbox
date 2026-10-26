@@ -16,7 +16,8 @@
 │   ├── lambda_app/     # FastAPI アプリと Lambda ハンドラー
 │   └── tests/          # REST API イベントによる検証
 ├── docs/
-│   └── poc/     # POC の目的、検証内容、結果の記録
+│   ├── poc/     # POC の目的、検証内容、結果の記録
+│   └── adr/     # 設計判断と採用理由
 └── .github/     # CI、Dependabot、PR テンプレート
 ```
 
@@ -27,3 +28,4 @@
 - [AWS 用 Lambda アプリの実行・検証手順](aws-mtls/README.md)
 - [Lambda 用アプリのイベント変換の検証記録](docs/poc/aws-lambda.md)
 - [AWS mTLS の構成と認証の流れ](docs/poc/aws-mtls.md)
+- [Lambda の配布方式に ZIP を採用する](docs/adr/0001-lambda-zip-deployment.md)
