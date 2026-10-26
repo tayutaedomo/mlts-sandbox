@@ -2,6 +2,12 @@
 
 需給調整市場向け RA システムで使う、AC と RA 間の HTTPS クライアント証明書認証・mTLS を学習、検証するためのリポジトリです。
 
+## 目次
+
+- [ディレクトリ構成](#ディレクトリ構成)
+- [ドキュメント](#ドキュメント)
+- [CI](#ci)
+
 ## ディレクトリ構成
 
 ```text
@@ -31,3 +37,18 @@
 - [Lambda 用アプリのイベント変換の検証記録](docs/poc/aws-lambda.md)
 - [AWS mTLS の構成と認証の流れ](docs/poc/aws-mtls.md)
 - [Lambda の配布方式に ZIP を採用する](docs/adr/0001-lambda-zip-deployment.md)
+
+## CI
+
+[GitHub Actions](.github/workflows/ci.yml) は、PR 全体の差分と main への push に含まれる変更から、検査対象を判定します。
+
+| 変更箇所 | 実行する検査 |
+| --- | --- |
+| `local-mtls/` | ローカル mTLS の pytest・Ruff |
+| `aws-mtls/`（`infra/` を除く） | Lambda 用アプリの pytest・Ruff |
+| `aws-mtls/infra/state/` | CloudFormation の cfn-lint |
+| `aws-mtls/pyproject.toml`・`uv.lock` | Lambda 用アプリと CloudFormation の両方 |
+| `.github/workflows/` | 全検査 |
+| Markdown 文書のみ | 変更範囲の判定だけを実行し、検査ジョブはスキップ |
+
+手動実行（`workflow_dispatch`）では全検査を実行します。変更判定が失敗した場合も全検査を実行します。
