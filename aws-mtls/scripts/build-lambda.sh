@@ -30,6 +30,9 @@ uv pip install \
   --only-binary :all: \
   --require-hashes --no-deps --link-mode copy
 
+# インストール時の排他制御に使ったファイルは、Lambda の実行には不要。
+rm -f "$PACKAGE_DIR/.lock"
+
 # アプリは .py ファイルだけを配置し、依存の CLI とキャッシュを除外する。
 cp -R "$PROJECT_DIR/lambda_app" "$PACKAGE_DIR/"
 find "$PACKAGE_DIR/lambda_app" -type f ! -name '*.py' -delete
