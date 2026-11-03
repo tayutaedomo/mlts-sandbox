@@ -24,7 +24,7 @@
 │   │   ├── state/       # CloudFormation による Terraform state 用 S3
 │   │   ├── certificate/ # Terraform による ACM サーバー証明書
 │   │   └── api/         # Terraform による Lambda と実行基盤
-│   ├── scripts/        # Lambda 用 ZIP のビルド
+│   ├── scripts/        # 証明書生成・API の接続確認・Lambda 用 ZIP のビルド
 │   └── tests/          # REST API イベントによる検証
 ├── docs/
 │   ├── poc/     # POC の目的、検証内容、結果の記録

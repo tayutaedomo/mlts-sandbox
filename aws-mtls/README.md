@@ -9,6 +9,10 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 - [state 用 S3 の構築](#state-用-s3-の構築)
 - [ACM サーバー証明書の申請](#acm-サーバー証明書の申請)
 - [Lambda の AWS 実行基盤](#lambda-の-aws-実行基盤)
+- [API の接続確認](#api-の接続確認)
+  - [証明書の生成](#証明書の生成)
+  - [証明書の検証](#証明書の検証)
+  - [Requests クライアント](#requests-クライアント)
 - [ローカル実行の準備](#ローカル実行の準備)
 - [ローカルでのイベント呼び出し](#ローカルでのイベント呼び出し)
   - [確認の流れ](#確認の流れ)
@@ -27,6 +31,7 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 - state 用 S3 は CloudFormation で作成し、保存先の初期構築をアプリから分離する。
 - サーバー証明書は専用の Terraform で申請し、外部 DNS の CNAME で所有確認する。
 - Lambda・実行ロール・ロググループは Terraform で管理する。
+- API の接続確認には Requests を使い、提示するクライアント証明書と接続結果を比較する。
 
 ローカルのイベント呼び出しでは、次の挙動を確認します。
 
@@ -56,10 +61,15 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 │   ├── certificate/          # Terraform：ACM 証明書と検証用 CNAME の出力
 │   └── api/                  # Terraform：Lambda・実行ロール・ログ
 ├── scripts/
-│   └── build-lambda.sh       # uv で Linux arm64 向けの依存を取得し ZIP 化
+│   ├── build-lambda.sh       # uv で Linux arm64 向けの依存を取得し ZIP 化
+│   ├── generate-client-certs.sh # CA と検証用クライアント証明書を生成
+│   ├── client-ca.cnf        # OpenSSL の発行設定とクライアント証明書の用途
+│   └── invoke_api.py        # Requests で API を呼び出し、応答・通信エラーを表示
+├── certs/generated/         # 証明書・秘密鍵・CSR（Git 管理対象外）
 ├── tests/
 │   ├── events/get-root.json  # 手動確認とテストで共用する REST API イベント
-│   └── test_handler.py
+│   ├── test_handler.py
+│   └── test_invoke_api.py
 ├── dist/                     # 生成した lambda.zip（Git 管理対象外）
 ├── pyproject.toml
 └── uv.lock
@@ -80,6 +90,87 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 
 Lambda の AWS 実行基盤の構築と確認は [Lambda 基盤の手順](infra/api/README.md) を参照してください。
 
+## API の接続確認
+
+接続先の HTTPS API に対し、証明書の提示有無や発行元を変えて接続結果を比較します。以下は `aws-mtls/` で実行します。
+
+```mermaid
+flowchart TD
+    A["uv sync：開発依存を準備"] --> B["OpenSSL：CA とクライアント証明書を生成"]
+    B --> C["OpenSSL：発行元・用途・有効期間を比較"]
+    C --> D["Requests：接続先 URL と証明書を指定"]
+    D --> E["HTTP 応答または通信エラーを確認"]
+```
+
+### 証明書の生成
+
+OpenSSL 3 以降と開発用依存関係を用意します。生成処理は AWS 認証やネットワーク接続を必要としません。
+
+```sh
+uv sync --locked --dev --python 3.13
+sh scripts/generate-client-certs.sh
+```
+
+| 生成ファイル | 用途 |
+| --- | --- |
+| `certs/generated/ca.crt` | 正常・期限切れ証明書の発行元 CA。Truststore に配置する証明書 |
+| `certs/generated/ca.key` | CA の秘密鍵。ローカルに保持 |
+| `certs/generated/client.crt`・`client.key` | 正常なクライアントの証明書・秘密鍵 |
+| `certs/generated/untrusted/` | 別の CA と、その CA が発行したクライアント証明書・秘密鍵 |
+| `certs/generated/expired/` | 正常系と同じ CA が発行した、有効期間が過去のクライアント証明書・秘密鍵 |
+
+- クライアント証明書には、TLS 接続時にクライアントが自分を証明するために使用できるという用途情報を設定します。OpenSSL では `extendedKeyUsage = clientAuth` と指定します。`clientAuth` は、この用途を表す OpenSSL の定義済みの名前です。
+- 秘密鍵の権限は所有者だけが読み書きできる `0600`。証明書・秘密鍵・CSR は Git 管理対象外です。
+- 既存の生成先がある場合は上書きせず終了します。別の一式が必要な場合は、`sh scripts/generate-client-certs.sh certs/generated/another` のように未使用の生成先を指定します。
+- [client-ca.cnf](scripts/client-ca.cnf) は、発行記録と連番の保存先、証明書の用途を指定します。発行記録は生成時の一時領域に置き、終了時に削除します。
+
+### 証明書の検証
+
+正常な証明書と、不正な条件の証明書を同じ CA で検証します。
+
+```sh
+openssl verify -purpose sslclient -CAfile certs/generated/ca.crt certs/generated/client.crt
+openssl verify -purpose sslclient -CAfile certs/generated/ca.crt certs/generated/untrusted/client.crt
+openssl verify -purpose sslclient -CAfile certs/generated/ca.crt certs/generated/expired/client.crt
+```
+
+| 証明書 | 期待する結果 |
+| --- | --- |
+| 正常 | `OK` |
+| 非信頼 CA | `error 20`：`unable to get local issuer certificate` |
+| 期限切れ | `error 10`：`certificate has expired` |
+
+用途と有効期間は、次のコマンドで確認できます。期限切れ証明書は、2020年1月1日〜2日を有効期間として発行しています。
+
+```sh
+openssl x509 -in certs/generated/client.crt -noout -dates -ext extendedKeyUsage
+openssl x509 -in certs/generated/expired/client.crt -noout -dates
+```
+
+### Requests クライアント
+
+接続先には、実際に用意した HTTPS API の URL を指定します。mTLS の場合は、その API が信頼する CA で発行したクライアント証明書を使います。
+
+```sh
+uv run --locked python scripts/invoke_api.py \
+  --url https://mtls-poc.example.com/ \
+  --certfile certs/generated/client.crt \
+  --keyfile certs/generated/client.key
+```
+
+- `--certfile` と `--keyfile` を両方省略すると、証明書を提示せずに接続します。片方だけの指定は引数エラーです。
+- `--method POST` を指定すると、同じクライアントで POST を試せます。
+- サーバー証明書は Requests 標準の公開 CA で検証します。ローカルで生成した `ca.crt` はクライアントの発行元であり、このサーバー検証には使いません。
+- リダイレクトは追跡せず、指定した接続先からの結果を表示します。
+
+| 結果 | 表示と終了コード |
+| --- | --- |
+| HTTP 2xx | ステータス・本文と、応答に含まれる Content-Type・リクエスト ID ヘッダーを表示。終了コード `0` |
+| HTTP 403・404・405 など | 同じ形式で HTTP 応答を表示。2xx 以外は終了コード `1` |
+| TLS・接続・タイムアウトのエラー | 標準エラー出力に例外の種類と詳細を表示。終了コード `2` |
+
+HTTP エラーは、HTTP 応答を受け取れない通信エラーと区別します。拒否理由はステータスや例外名だけで断定せず、入力した証明書の条件とサーバー側のログを照合します。
+
 ## ローカル実行の準備
 
 - Python 3.13
@@ -92,7 +183,7 @@ uv sync --locked --dev --python 3.13
 ```
 
 - 実行依存：FastAPI・Mangum。
-- 開発依存：pytest・Ruff・cfn-lint（CloudFormation の静的検査）。
+- 開発依存：pytest・Ruff・cfn-lint（CloudFormation の静的検査）・Requests（API の接続確認）。Requests は Lambda 用 ZIP には含めません。
 - ローカルでハンドラーを直接呼び出すため、Uvicorn・Docker・AWS 認証情報は不要。
 
 ## ローカルでのイベント呼び出し
@@ -252,6 +343,7 @@ uv run --locked cfn-lint infra/state/template.yaml
 | 同じハンドラーを連続呼び出し | どちらも正常応答を返す |
 
 - イベント変換をモックせず、実際の Mangum を通して検証。
+- Requests クライアントは通信を置き換え、引数・証明書検証の設定・出力・終了コードを検証。実際の TLS 認証は接続先の API で確認。
 - ZIP は CI で実際にビルドし、`unzip -tq` でアーカイブの整合性を確認。
 - CloudFormation は cfn-lint で構造・プロパティ・値などを静的検査。作成後の設定確認は [state 基盤の手順](infra/state/README.md#設定の確認) を参照。
 - 整形する場合は `uv run --locked ruff format .` を実行。
