@@ -8,7 +8,7 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 - [構成](#構成)
 - [state 用 S3 の構築](#state-用-s3-の構築)
 - [ACM サーバー証明書の申請](#acm-サーバー証明書の申請)
-- [Lambda の AWS 実行基盤](#lambda-の-aws-実行基盤)
+- [Lambda と Truststore の AWS 基盤](#lambda-と-truststore-の-aws-基盤)
 - [API の接続確認](#api-の接続確認)
   - [証明書の生成](#証明書の生成)
   - [証明書の検証](#証明書の検証)
@@ -31,6 +31,7 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 - state 用 S3 は CloudFormation で作成し、保存先の初期構築をアプリから分離する。
 - サーバー証明書は専用の Terraform で申請し、外部 DNS の CNAME で所有確認する。
 - Lambda・実行ロール・ロググループは Terraform で管理する。
+- 検証用 CA 証明書は、state 用とは別の S3 Truststore に Terraform で配置する。
 - API の接続確認には Requests を使い、提示するクライアント証明書と接続結果を比較する。
 
 ローカルのイベント呼び出しでは、次の挙動を確認します。
@@ -59,7 +60,7 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 │   │   ├── template.yaml     # CloudFormation：state 用 S3 とバケットポリシー
 │   │   └── README.md         # 作成・設定確認・削除の手順
 │   ├── certificate/          # Terraform：ACM 証明書と検証用 CNAME の出力
-│   └── api/                  # Terraform：Lambda・実行ロール・ログ
+│   └── api/                  # Terraform：Lambda・実行ロール・ログ・S3 Truststore
 ├── scripts/
 │   ├── build-lambda.sh       # uv で Linux arm64 向けの依存を取得し ZIP 化
 │   ├── generate-client-certs.sh # CA と検証用クライアント証明書を生成
@@ -86,9 +87,9 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 
 [証明書の手順](infra/certificate/README.md) に、Terraform の S3 backend 設定、証明書の申請、外部 DNS への CNAME 登録、発行確認と削除を記載しています。AWS CLI・Terraform・AWS 認証を使用します。
 
-## Lambda の AWS 実行基盤
+## Lambda と Truststore の AWS 基盤
 
-Lambda の AWS 実行基盤の構築と確認は [Lambda 基盤の手順](infra/api/README.md) を参照してください。
+Lambda の実行基盤と S3 Truststore の構築・設定確認・削除は [AWS 基盤の手順](infra/api/README.md) を参照してください。
 
 ## API の接続確認
 

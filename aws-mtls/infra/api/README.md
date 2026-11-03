@@ -1,12 +1,13 @@
-# Lambda の AWS 実行基盤
+# Lambda と Truststore の AWS 基盤
 
-FastAPI + Mangum のアプリを Lambda へ ZIP 形式で配置し、実行ロールと CloudWatch Logs を Terraform で管理します。
+FastAPI + Mangum のアプリを Lambda へ ZIP 形式で配置し、実行ロール・CloudWatch Logs・クライアント証明書の検証用 CA を保存する S3 Truststore を Terraform で管理します。
 
 ## 目次
 
 - [構成と確認の流れ](#構成と確認の流れ)
 - [準備](#準備)
 - [作成](#作成)
+- [Truststore の設定と内容の確認](#truststore-の設定と内容の確認)
 - [呼び出しとログの確認](#呼び出しとログの確認)
 - [削除](#削除)
 - [ローカルの検証](#ローカルの検証)
@@ -15,10 +16,10 @@ FastAPI + Mangum のアプリを Lambda へ ZIP 形式で配置し、実行ロ�
 
 ```mermaid
 flowchart TD
-    A["Lambda ZIP・state 用 S3・AWS 認証を準備"] --> B["Terraform：作成する差分を確認"]
-    B --> C["Lambda・実行ロール・ロググループを作成"]
-    C --> D["REST API のサンプルイベントで Lambda を呼び出す"]
-    D --> E["応答と CloudWatch Logs を確認"]
+    A["Lambda ZIP・検証用 CA・state 用 S3・AWS 認証を準備"] --> B["Terraform：作成する差分を確認"]
+    B --> C["Lambda・実行ロール・ロググループ・Truststore を作成"]
+    C --> D["S3 の設定と、配置した CA 証明書の一致を確認"]
+    C --> E["サンプルイベントで Lambda を呼び出し、応答とログを確認"]
 ```
 
 | 対象 | 設定・役割 |
@@ -28,7 +29,19 @@ flowchart TD
 | ハンドラー | `lambda_app.handler.handler` |
 | 実行ロール | Lambda から対象ロググループへの書き込みを許可 |
 | ロググループ | `/aws/lambda/mtls-poc`、保持期間7日。Terraform が作成・削除 |
+| Truststore | state 用とは別の S3 バケットに、CA 証明書を `truststore.pem` として保存 |
 | state | 既存の state 用 S3 の `api/terraform.tfstate`。証明書用とは別のキー |
+
+Truststore のバケット名には `mtls-poc-truststore-` に一意な接尾辞を付けます。名前・S3 URI・オブジェクトのバージョンは Terraform の出力で取得します。
+
+| Truststore の設定 | 役割 |
+| --- | --- |
+| Block Public Access | 公開アクセスを遮断する4設定を有効化 |
+| ACL | `BucketOwnerEnforced` で無効化 |
+| 保存時の暗号化 | SSE-S3（`AES256`）を使用 |
+| 通信 | バケットとオブジェクトへの HTTP アクセスを拒否 |
+| バージョニング | CA 証明書の更新前後を識別し、参照する版を指定可能にする |
+| 削除 | `force_destroy = true`。バケット削除時に過去バージョンも削除 |
 
 ## 準備
 
@@ -36,6 +49,14 @@ flowchart TD
 - [state 用 S3](../state/README.md) を作成し、S3・Lambda・IAM・CloudWatch Logs を操作できる権限を用意します。
 - IAM ロールとポリシーの作成、および Lambda に実行ロールを渡す `iam:PassRole` が必要です。
 - 動作確認には `lambda:InvokeFunction` と、CloudWatch Logs の読み取り権限も必要です。
+- [クライアント証明書の生成手順](../../README.md#証明書の生成) で、検証用 CA 証明書を用意します。Truststore には CA 証明書だけを指定します。
+
+| 入力変数 | 既定値（このディレクトリからの相対パス） |
+| --- | --- |
+| `lambda_package_path` | `../../dist/lambda.zip` |
+| `truststore_path` | `../../certs/generated/ca.crt` |
+
+別の CA を使う場合は、Git 管理外の `terraform.tfvars` で `truststore_path` にその PEM ファイルを指定します。
 
 `aws-mtls/` で ZIP を生成してから、Terraform のディレクトリに移動します。
 
@@ -79,13 +100,56 @@ terraform validate
 terraform plan -out=api.tfplan
 ```
 
-Lambda、実行ロール、ログ用ポリシー、ロググループの差分を確認して適用します。
+Lambda・実行ロール・ログ用ポリシー・ロググループと、Truststore の S3 バケット・設定・オブジェクトの差分を確認して適用します。
 
 ```sh
 terraform apply api.tfplan
 ```
 
-アプリを変更した場合は ZIP を再生成してから `terraform plan` を実行します。生成物のハッシュが変わると Lambda のコードが更新されます。
+アプリを変更した場合は ZIP を再生成してから `terraform plan` を実行します。生成物のハッシュが変わると Lambda のコードが更新されます。Truststore も CA ファイルの内容のハッシュで変更を検出し、更新時に新しいオブジェクトバージョンを作成します。
+
+| 出力 | 用途 |
+| --- | --- |
+| `lambda_function_name` | Lambda の直接呼び出し |
+| `lambda_function_arn` | Lambda を識別する ARN |
+| `truststore_bucket_name` | S3 の設定と配置内容の確認 |
+| `truststore_uri` | mTLS で参照する Truststore の S3 URI |
+| `truststore_version_id` | 参照する CA 証明書のオブジェクトバージョン |
+
+## Truststore の設定と内容の確認
+
+Terraform の出力から対象を取得し、S3 の設定を確認します。
+
+```sh
+TRUSTSTORE_BUCKET=$(terraform output -raw truststore_bucket_name)
+TRUSTSTORE_VERSION=$(terraform output -raw truststore_version_id)
+
+aws s3api get-public-access-block --bucket "$TRUSTSTORE_BUCKET"
+aws s3api get-bucket-ownership-controls --bucket "$TRUSTSTORE_BUCKET"
+aws s3api get-bucket-encryption --bucket "$TRUSTSTORE_BUCKET"
+aws s3api get-bucket-versioning --bucket "$TRUSTSTORE_BUCKET"
+aws s3api get-bucket-policy --bucket "$TRUSTSTORE_BUCKET" --query Policy --output text
+aws s3api head-object \
+  --bucket "$TRUSTSTORE_BUCKET" --key truststore.pem \
+  --version-id "$TRUSTSTORE_VERSION" \
+  --query '{VersionId:VersionId,Encryption:ServerSideEncryption}'
+```
+
+各設定が「構成と確認の流れ」の表と一致し、オブジェクトのバージョンが出力値と一致することを確認します。
+
+配置したファイルを取得し、元の CA 証明書と比較します。以下は既定の `truststore_path` を使う場合の例です。入力を変更した場合は、`cmp` の比較元も同じファイルに変更します。
+
+```sh
+TRUSTSTORE_COPY=$(mktemp)
+aws s3api get-object \
+  --bucket "$TRUSTSTORE_BUCKET" --key truststore.pem \
+  --version-id "$TRUSTSTORE_VERSION" "$TRUSTSTORE_COPY"
+cmp ../../certs/generated/ca.crt "$TRUSTSTORE_COPY"
+openssl x509 -in "$TRUSTSTORE_COPY" -noout -subject -issuer
+rm "$TRUSTSTORE_COPY"
+```
+
+`cmp` が出力なし・終了コード `0` で終了すれば内容は一致しています。Truststore の証明書チェーンとバージョン指定の仕様は [API Gateway の mTLS](https://docs.aws.amazon.com/apigateway/latest/developerguide/rest-api-mutual-tls.html) を参照してください。
 
 ## 呼び出しとログの確認
 
@@ -126,7 +190,9 @@ terraform destroy
 terraform state list
 ```
 
-管理対象の削除とロググループの消去を確認します。state 用 S3 の整理は [state 基盤の削除手順](../state/README.md#削除) を参照してください。
+Lambda・実行ロール・ロググループ・Truststore の削除と、state が空になったことを確認します。Truststore バケットの `force_destroy` により、過去バージョンや削除マーカーを含む全オブジェクトも削除されます。この削除は取り消せません。仕様は [Terraform の S3 バケット](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket) を参照してください。
+
+state 用 S3 は別の CloudFormation スタックで管理しています。整理する手順は [state 基盤の削除](../state/README.md#削除) を参照してください。
 
 ## ローカルの検証
 
@@ -139,7 +205,7 @@ terraform validate
 terraform test
 ```
 
-テストはモックとテスト用のファイルを使い、実行設定・ロールの信頼関係・ログ権限・配布物のハッシュを確認します。AWS での実際の起動とログ出力は、上記の手順で確認します。
+テストはモックとテスト用のファイルを使い、Lambda の実行設定・ロール・ログ権限と、Truststore の公開遮断・暗号化・バージョニング・HTTP 拒否・配置と参照情報を確認します。AWS での実際の起動・ログ出力・S3 の設定と配置内容は、上記の手順で確認します。
 
 プロバイダーの更新後は、開発環境の Mac arm64 と CI の Linux amd64 のハッシュを記録します。
 

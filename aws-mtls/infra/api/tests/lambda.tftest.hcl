@@ -18,6 +18,7 @@ mock_provider "aws" {
 
 variables {
   lambda_package_path = "tests/lambda-package.txt"
+  truststore_path     = "tests/truststore-ca.txt"
 }
 
 run "lambda_settings" {
