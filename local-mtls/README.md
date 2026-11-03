@@ -57,7 +57,7 @@ Python と OpenSSL を使い、ローカルで TLS と mTLS の動作を学ぶ�
 
 ## 実行環境
 
-- Python 3.13 以上
+- Python 3.14 以上
 - [uv](https://docs.astral.sh/uv/)
 - OpenSSL
 
@@ -334,12 +334,14 @@ uv run python -m mtls.client_requests \
 
 | サーバー | クライアント証明書の条件 | urllib 版 | Requests 版 |
 | --- | --- | --- | --- |
-| 標準ライブラリ版 | なし | TLS アラート：`CERTIFICATE_REQUIRED` またはハンドシェイク失敗 | `SSLError`：同種の TLS アラート |
-| 標準ライブラリ版 | 非信頼 CA | TLS アラート：`UNKNOWN_CA` | `SSLError`：`UNKNOWN_CA` |
-| FastAPI 版 | なし | `RemoteDisconnected` | `ConnectionError` 内の `RemoteDisconnected` |
-| FastAPI 版 | 非信頼 CA | `RemoteDisconnected` | `ConnectionError` 内の `RemoteDisconnected` |
+| 標準ライブラリ版 | なし | TLS アラート：`CERTIFICATE_REQUIRED` など、または接続リセット | `SSLError`：同種の TLS アラート、または `ConnectionError`：接続リセット |
+| 標準ライブラリ版 | 非信頼 CA | TLS アラート：`UNKNOWN_CA`、または接続リセット | `SSLError`：`UNKNOWN_CA`、または `ConnectionError`：接続リセット |
+| FastAPI 版 | なし | `RemoteDisconnected`・`ConnectionResetError`・`BrokenPipeError` | `ConnectionError` 内の `RemoteDisconnected`・`ConnectionResetError`・`BrokenPipeError` |
+| FastAPI 版 | 非信頼 CA | `RemoteDisconnected`・`ConnectionResetError` | `ConnectionError` 内の `RemoteDisconnected`・`ConnectionResetError` |
 
 - Requests の例外は `requests.exceptions` のもの。表記は環境により変化。
+- urllib では接続リセットが `URLError` 内の `ConnectionResetError` として見える場合もあり、例外名だけでは拒否理由を判定できない。
+- `BrokenPipeError` のメッセージ：`Broken pipe`。接続切断後の通信で発生するため、証明書の拒否理由そのものではない。
 - `RemoteDisconnected` のメッセージ：`Remote end closed connection without response`。
 - 拒否は HTTP 処理前。FastAPI も呼び出されず、401・403 は返らない。
 - `Connection refused` やタイムアウトは、今回の認証拒否とは別の通信失敗。

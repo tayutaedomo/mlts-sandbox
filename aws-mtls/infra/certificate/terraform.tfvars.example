@@ -1,0 +1,2 @@
+# 証明書を発行するドメインへ変更する。
+domain_name = "mtls-poc.example.com"

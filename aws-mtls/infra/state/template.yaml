@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Terraform state を保存する S3 バケット
+
+Resources:
+  StateBucket:
+    Type: AWS::S3::Bucket
+    # 検証終了後にバケットも削除する。中の全バージョンは事前に削除する必要がある。
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      # BucketName を省略し、CloudFormation が一意な名前を生成する。
+      VersioningConfiguration:
+        # state が上書きされても、過去のバージョンから復旧できるようにする。
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              # S3 管理の鍵で保存時に暗号化する。KMS キーの作成は不要。
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          # ACL を無効にし、アクセス権を IAM とバケットポリシーで管理する。
+          - ObjectOwnership: BucketOwnerEnforced
+
+  StateBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: StateBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - Fn::GetAtt: [StateBucket, Arn]
+              - Fn::Sub: '${StateBucket.Arn}/*'
+            Condition:
+              # 保存時の暗号化とは別に、HTTP による平文アクセスを拒否する。
+              Bool:
+                aws:SecureTransport: 'false'
+
+Outputs:
+  StateBucketName:
+    Description: Terraform の S3 backend に指定するバケット名
+    Value:
+      Ref: StateBucket
+  StateBucketRegion:
+    Description: state バケットを作成したリージョン
+    Value:
+      Ref: AWS::Region

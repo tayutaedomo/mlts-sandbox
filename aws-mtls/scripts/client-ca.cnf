@@ -1,0 +1,25 @@
+# openssl ca が証明書を発行するための設定。
+[ca]
+default_ca = signing
+
+[signing]
+# 発行記録・連番は生成スクリプトの一時領域に置く。CA の証明書と鍵はコマンドで指定する。
+database = $ENV::CA_WORK_DIR/index.txt
+serial = $ENV::CA_WORK_DIR/serial
+new_certs_dir = $ENV::CA_WORK_DIR/newcerts
+default_md = sha256
+default_days = 365
+policy = client_subject
+x509_extensions = client_cert
+unique_subject = no
+
+[client_subject]
+commonName = supplied
+
+[client_cert]
+# CA としては使えず、TLS クライアント認証と秘密鍵の所持証明に使う。
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature
+extendedKeyUsage = clientAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
