@@ -27,7 +27,7 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 
 - サンプルイベントをハンドラーへ直接渡し、Lambda イベントと HTTP 応答の変換を理解する。
 - イベント変換は AWS への接続や HTTP サーバーの起動をせず、ローカルの Python で確認する。
-- アプリと実行依存をまとめ、Python 3.13・Linux arm64 用の Lambda 配布 ZIP を作成する。
+- アプリと実行依存をまとめ、Python 3.14・Linux arm64 用の Lambda 配布 ZIP を作成する。
 - state 用 S3 は CloudFormation で作成し、保存先の初期構築をアプリから分離する。
 - サーバー証明書は専用の Terraform で申請し、外部 DNS の CNAME で所有確認する。
 - Lambda・実行ロール・ロググループは Terraform で管理する。
@@ -107,7 +107,7 @@ flowchart TD
 OpenSSL 3 以降と開発用依存関係を用意します。生成処理は AWS 認証やネットワーク接続を必要としません。
 
 ```sh
-uv sync --locked --dev --python 3.13
+uv sync --locked --dev --python 3.14
 sh scripts/generate-client-certs.sh
 ```
 
@@ -173,13 +173,13 @@ HTTP エラーは、HTTP 応答を受け取れない通信エラーと区別し�
 
 ## ローカル実行の準備
 
-- Python 3.13
+- Python 3.14
 - [uv](https://docs.astral.sh/uv/)
 
 以降は `aws-mtls/` で実行します。
 
 ```sh
-uv sync --locked --dev --python 3.13
+uv sync --locked --dev --python 3.14
 ```
 
 - 実行依存：FastAPI・Mangum。
@@ -285,7 +285,7 @@ flowchart TD
 
 | 項目 | 対象・動作 |
 | --- | --- |
-| 実行環境 | Lambda の Python 3.13・arm64 |
+| 実行環境 | Lambda の Python 3.14・arm64 |
 | wheel の対象 | `aarch64-manylinux2014`。glibc 2.17 以降に対応する Linux arm64 |
 | 依存の取得 | `uv.lock` の実行依存をハッシュ検証して取得。Mac の `.venv` はコピーしない |
 | アプリ | `lambda_app/` の `.py` ファイル |

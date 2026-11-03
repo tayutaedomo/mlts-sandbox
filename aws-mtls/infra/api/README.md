@@ -23,7 +23,7 @@ flowchart TD
 
 | 対象 | 設定・役割 |
 | --- | --- |
-| Lambda | `mtls-poc`、Python 3.13、arm64、メモリ256 MB、タイムアウト10秒 |
+| Lambda | `mtls-poc`、Python 3.14、arm64、メモリ256 MB、タイムアウト10秒 |
 | 配布物 | `../../dist/lambda.zip`。内容のハッシュで ZIP の更新を検出 |
 | ハンドラー | `lambda_app.handler.handler` |
 | 実行ロール | Lambda から対象ロググループへの書き込みを許可 |

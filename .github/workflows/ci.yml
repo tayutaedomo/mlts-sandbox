@@ -88,11 +88,11 @@ jobs:
       - name: ソースコードを取得
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: uv と Python 3.13 を準備
+      - name: uv と Python 3.14 を準備
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.13.4"
-          python-version: "3.13"
+          python-version: "3.14"
           enable-cache: true
           cache-dependency-glob: local-mtls/uv.lock
 
@@ -128,11 +128,11 @@ jobs:
       - name: ソースコードを取得
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: uv と Python 3.13 を準備
+      - name: uv と Python 3.14 を準備
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.13.4"
-          python-version: "3.13"
+          python-version: "3.14"
           enable-cache: true
           cache-dependency-glob: aws-mtls/uv.lock
 
@@ -173,11 +173,11 @@ jobs:
       - name: ソースコードを取得
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: uv と Python 3.13 を準備
+      - name: uv と Python 3.14 を準備
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.13.4"
-          python-version: "3.13"
+          python-version: "3.14"
           enable-cache: true
           cache-dependency-glob: aws-mtls/uv.lock
 

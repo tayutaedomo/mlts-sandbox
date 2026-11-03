@@ -26,7 +26,7 @@ run "lambda_settings" {
 
   assert {
     condition = (
-      aws_lambda_function.app.runtime == "python3.13" &&
+      aws_lambda_function.app.runtime == "python3.14" &&
       aws_lambda_function.app.architectures == tolist(["arm64"]) &&
       aws_lambda_function.app.handler == "lambda_app.handler.handler" &&
       aws_lambda_function.app.memory_size == 256 && aws_lambda_function.app.timeout == 10

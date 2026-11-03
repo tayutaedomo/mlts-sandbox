@@ -45,7 +45,7 @@ resource "aws_lambda_function" "app" {
   filename         = var.lambda_package_path
   source_code_hash = filebase64sha256(var.lambda_package_path)
   handler          = "lambda_app.handler.handler"
-  runtime          = "python3.13"
+  runtime          = "python3.14"
   architectures    = ["arm64"]
   memory_size      = 256
   timeout          = 10

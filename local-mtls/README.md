@@ -57,7 +57,7 @@ Python と OpenSSL を使い、ローカルで TLS と mTLS の動作を学ぶ�
 
 ## 実行環境
 
-- Python 3.13 以上
+- Python 3.14 以上
 - [uv](https://docs.astral.sh/uv/)
 - OpenSSL
 

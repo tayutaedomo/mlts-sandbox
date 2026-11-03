@@ -115,7 +115,7 @@ S3 の削除条件は [AWS::S3::Bucket](https://docs.aws.amazon.com/AWSCloudForm
 ## ローカルの静的検査
 
 ```sh
-uv sync --locked --dev --python 3.13
+uv sync --locked --dev --python 3.14
 uv run --locked cfn-lint infra/state/template.yaml
 ```
 

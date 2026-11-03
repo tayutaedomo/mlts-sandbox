@@ -1,9 +1,9 @@
-# このディレクトリは Python 3.13 以上で実行します。
+# このディレクトリは Python 3.14 以上で実行します。
 [project]
 name = "aws-mtls"
 version = "0.1.0"
 description = "FastAPI と Mangum で Lambda のイベント変換を学ぶためのサンプル"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 # FastAPI が応答を定義し、Mangum が Lambda イベントとの変換を担当します。
 dependencies = [
     "fastapi>=0.162.0",
@@ -28,9 +28,9 @@ package = false
 pythonpath = ["."]
 testpaths = ["tests"]
 
-# Python 3.13 を対象に、1行の長さを120文字として整形します。
+# Python 3.14 を対象に、1行の長さを120文字として整形します。
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 120
 
 # 基本的な構文・未使用変数などの検査と、import の並び順の検査を有効にします。

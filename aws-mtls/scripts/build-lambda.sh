@@ -19,13 +19,13 @@ cd "$PROJECT_DIR"
 uv export --locked --no-dev --no-emit-project \
   --output-file "$WORK_DIR/requirements.txt" > /dev/null
 
-# Mac の .venv をコピーせず、Python 3.13・Linux arm64 用 wheel を取得する。
-# manylinux2014 は glibc 2.17 以降向けで、Lambda の Python 3.13（AL2023）に対応する。
+# Mac の .venv をコピーせず、Python 3.14・Linux arm64 用 wheel を取得する。
+# manylinux2014 は glibc 2.17 以降向けで、Lambda の Python 3.14（AL2023）に対応する。
 # 対応 wheel がない場合は失敗させ、Mac 上でのソースビルドへ切り替えない。
 uv pip install \
   --requirements "$WORK_DIR/requirements.txt" \
   --target "$PACKAGE_DIR" \
-  --python-version 3.13 \
+  --python-version 3.14 \
   --python-platform aarch64-manylinux2014 \
   --only-binary :all: \
   --require-hashes --no-deps --link-mode copy
