@@ -43,6 +43,7 @@
 - [Lambda 用アプリのイベント変換の検証記録](docs/poc/aws-lambda.md)
 - [AWS mTLS の構成と認証の流れ](docs/poc/aws-mtls.md)
 - [Lambda の配布方式に ZIP を採用する](docs/adr/0001-lambda-zip-deployment.md)
+- [Lambda のデプロイを Terraform で管理する](docs/adr/0002-lambda-deployment-management.md)
 
 ## CI
 
