@@ -4,7 +4,11 @@ resource "aws_cloudwatch_log_group" "api_access" {
   retention_in_days = 7
 }
 
-# API Gateway が実行ログに使用する規定の名前。ステージを作る前に用意する。
+# 標準実行ログ方式の名前は API-Gateway-Execution-Logs_{API ID}/{ステージ名} で固定。
+# 任意の名前を使うには、CloudWatch Logs delivery で配信元・配信先・関連付けを追加する。
+# この POC は mTLS とログの挙動を検証するため、標準方式を使用する。
+# 規定名のグループをステージより先に作成し、保持期間と削除を Terraform で管理する。
+# 方式の比較：https://docs.aws.amazon.com/apigateway/latest/developerguide/rest-api-execution-logging.html
 resource "aws_cloudwatch_log_group" "api_execution" {
   name              = "API-Gateway-Execution-Logs_${aws_api_gateway_rest_api.api.id}/${local.stage_name}"
   retention_in_days = 7
