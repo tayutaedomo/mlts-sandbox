@@ -1,3 +1,16 @@
+"""FastAPI + Uvicorn の mTLS 接続と証明書拒否を検証する。
+
+概要:
+    正常な証明書・証明書なし・非信頼 CA の証明書による接続結果を比較する。
+
+方針:
+    - 実際の TLS 接続を使い、サーバーの拒否理由・HTTP 未到達・拒否前後の正常接続を確認する。
+
+テストケース一覧:
+    - 正常な証明書で固定本文を取得する。
+    - 証明書なし・非信頼 CA の接続を、それぞれの理由で拒否する。
+"""
+
 import socket
 import ssl
 import subprocess
@@ -27,10 +40,10 @@ def certificates(tmp_path_factory):
 
 
 @pytest.fixture
-def mtls_fastapi_server(certificates, monkeypatch):
+def mtls_fastapi_server(certificates, monkeypatch, server_observations, run_uvicorn):
     """実際の Uvicorn を空きポートで起動し、テスト後に停止する。"""
     # テスト内だけで HTTP 到達を記録し、TLS 拒否がアプリの処理前かを確認する。
-    requests = []
+    requests = server_observations["requests"]
     app = fastapi_server.app
 
     async def track_requests(scope, receive, send):
@@ -51,7 +64,7 @@ def mtls_fastapi_server(certificates, monkeypatch):
             host="127.0.0.1",
             port=port,
         )
-        thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+        thread = threading.Thread(target=run_uvicorn, args=(server, [listener]), daemon=True)
         thread.start()
         try:
             # 固定秒数を待つのではなく、起動完了か起動失敗を期限付きで確認する。
@@ -94,7 +107,7 @@ def untrusted_certificates(tmp_path_factory):
 
 @pytest.mark.parametrize("client_certificate", ["missing", "untrusted"])
 def test_rejects_invalid_client_authentication(
-    certificates, untrusted_certificates, mtls_fastapi_server, client_certificate
+    certificates, untrusted_certificates, mtls_fastapi_server, client_certificate, server_observations
 ):
     url, requests = mtls_fastapi_server
 
@@ -105,8 +118,8 @@ def test_rejects_invalid_client_authentication(
     assert connect_with_trusted_certificate() == "ローカル mTLS サーバーからの応答です。\n"
     assert requests == ["/"]
 
-    # asyncio の TLS 処理では、拒否が TLS アラートではなく接続切断で見える場合もある。
-    with pytest.raises((URLError, ssl.SSLError, RemoteDisconnected, ConnectionResetError)) as error:
+    # TLS 拒否後の通知は、読み書きのタイミングにより切断・リセット・Broken pipe にもなる。
+    with pytest.raises((URLError, ssl.SSLError, RemoteDisconnected, ConnectionResetError, BrokenPipeError)) as error:
         if client_certificate == "missing":
             get_without_client_certificate(url, cafile=certificates / "ca.crt")
         else:
@@ -118,9 +131,15 @@ def test_rejects_invalid_client_authentication(
             )
 
     cause = error.value.reason if isinstance(error.value, URLError) else error.value
-    assert isinstance(cause, (ssl.SSLError, RemoteDisconnected, ConnectionResetError))
+    assert isinstance(cause, (ssl.SSLError, RemoteDisconnected, ConnectionResetError, BrokenPipeError))
     # サーバー証明書の検証失敗や、接続拒否・タイムアウトは今回の成功条件に含めない。
     assert not isinstance(cause, ssl.SSLCertVerificationError)
+    reason, verify_code = server_observations["tls_errors"].get(timeout=5)
+    if client_certificate == "missing":
+        assert reason == "PEER_DID_NOT_RETURN_A_CERTIFICATE"
+    else:
+        assert reason == "CERTIFICATE_VERIFY_FAILED"
+        assert verify_code == 20  # 発行元 CA が見つからない。
     assert requests == ["/"]
     print(f"クライアント証明書 {client_certificate}: {type(cause).__name__}: {cause}")
 

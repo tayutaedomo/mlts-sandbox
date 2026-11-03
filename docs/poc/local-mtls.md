@@ -242,12 +242,13 @@ HTTP の応答処理を FastAPI、ポートの待ち受けと TLS の処理を U
 | 両サーバー | 正常なクライアント証明書 | 200 と同じ固定本文を返す | `ローカル mTLS サーバーからの応答です。` | `ローカル mTLS サーバーからの応答です。` |
 | 標準ライブラリ版 | クライアント証明書なし | TLS 段階で拒否、HTTP 処理なし | TLS アラート：`CERTIFICATE_REQUIRED` など、または `ConnectionResetError`（`URLError` 内の場合もある） | `requests.exceptions.SSLError`：同種の TLS アラート、または `ConnectionError`：接続リセット |
 | 標準ライブラリ版 | 非信頼 CA のクライアント証明書 | TLS 段階で拒否、HTTP 処理なし | TLS アラート：`UNKNOWN_CA`、または `ConnectionResetError`（`URLError` 内の場合もある） | `requests.exceptions.SSLError`：`UNKNOWN_CA`、または `ConnectionError`：接続リセット |
-| FastAPI 版 | クライアント証明書なし | TLS 段階で拒否、HTTP 処理なし | `http.client.RemoteDisconnected` | `requests.exceptions.ConnectionError`：内部に `RemoteDisconnected` |
-| FastAPI 版 | 非信頼 CA のクライアント証明書 | TLS 段階で拒否、HTTP 処理なし | `http.client.RemoteDisconnected` | `requests.exceptions.ConnectionError`：内部に `RemoteDisconnected` |
+| FastAPI 版 | クライアント証明書なし | TLS 段階で拒否、HTTP 処理なし | `RemoteDisconnected`・`ConnectionResetError`・`BrokenPipeError` | `requests.exceptions.ConnectionError`：内部に `RemoteDisconnected`・`ConnectionResetError`・`BrokenPipeError` |
+| FastAPI 版 | 非信頼 CA のクライアント証明書 | TLS 段階で拒否、HTTP 処理なし | `RemoteDisconnected`・`ConnectionResetError` | `requests.exceptions.ConnectionError`：内部に `RemoteDisconnected`・`ConnectionResetError` |
 | 両サーバー | サーバー検証用 CA が不正（自分の証明書は正常） | クライアントが TLS 段階で拒否、HTTP 処理なし | `URLError` 内の `SSLCertVerificationError`：`CERTIFICATE_VERIFY_FAILED` | `requests.exceptions.SSLError`：`CERTIFICATE_VERIFY_FAILED` |
 
 - 出力はこの実装での例。TLS バージョンや実行環境でアラート・切断・リセットなど表記が変わる。
-- 証明書拒否の TLS アラートをクライアントが読み取ると `SSLError` になる。一方、拒否後の切断と HTTP リクエストの送信が重なると、送信中に `ConnectionResetError` を受け取る場合がある。
+- 証明書拒否の TLS アラートをクライアントが読み取ると `SSLError` になる。拒否による切断とリクエスト送信の順序によっては、接続リセットとして通知される。
+- 証明書未提示で Uvicorn が接続を閉じた後でも、クライアント側の HTTP リクエスト送信は成功することがある。応答の読み取り中に OpenSSL が EOF を検出し、TLS アラートを書き込もうとして `EPIPE` を受けると、Python では読み取り中の `BrokenPipeError` として見える。
 - `RemoteDisconnected` のメッセージ：`Remote end closed connection without response`。
 - 拒否時は HTTP の 401・403 を返さず、FastAPI も呼び出されない。
 - 拒否後もサーバーは正常な証明書による接続を受け付ける。
@@ -263,8 +264,8 @@ HTTP の応答処理を FastAPI、ポートの待ち受けと TLS の処理を U
 
 標準ライブラリ版では、テスト内でサーバーの TLS 拒否理由と HTTP 到達を記録し、拒否前後にも正常接続する。クライアントが接続リセットを受けても、サーバー側の証明書拒否と照合するため、単なる通信障害を成功扱いしない。実接続で拒否された後に例外を接続リセットへ置き換えるケースも設け、切断の見え方が変わる条件を確実に検証する。
 
-[FastAPI 版のテスト](../../local-mtls/tests/test_mtls_fastapi.py) は実際の Uvicorn に接続し、拒否したリクエストが HTTP 処理へ到達しないことと、拒否前後の正常接続を検証する。接続拒否やタイムアウト、クライアント側のサーバー証明書検証失敗は、クライアント認証の拒否として扱わない。
+[FastAPI 版のテスト](../../local-mtls/tests/test_mtls_fastapi.py) は実際の Uvicorn に接続し、サーバー側の TLS 拒否理由・HTTP 未到達・拒否前後の正常接続を照合する。テスト中だけ asyncio の debug と例外ハンドラーを使い、ハンドシェイク失敗の理由を記録する。接続拒否やタイムアウト、クライアント側のサーバー証明書検証失敗は、クライアント認証の拒否として扱わない。
 
-[Requests 版のテスト](../../local-mtls/tests/test_mtls_requests.py) は両サーバーに対し、正常接続・証明書なし・非信頼 CA の証明書・サーバー検証用 CA の不一致を検証する。クライアント認証の拒否前後にも正常接続し、サーバー停止による失敗と区別する。証明書と秘密鍵の片方だけの指定と、HTTP エラーの伝播は単体テストで検証する。
+[Requests 版のテスト](../../local-mtls/tests/test_mtls_requests.py) は両サーバーに対し、正常接続・証明書なし・非信頼 CA の証明書・サーバー検証用 CA の不一致を検証する。クライアント認証では、サーバー側の TLS 拒否理由・HTTP 未到達・拒否前後の正常接続を照合する。証明書と秘密鍵の片方だけの指定と、HTTP エラーの伝播は単体テストで検証する。
 
 ホスト名不一致や有効期限切れは個別のテストにしていない。
