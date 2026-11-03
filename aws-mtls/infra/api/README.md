@@ -97,16 +97,15 @@ EOF
 terraform init -backend-config=backend.hcl
 terraform fmt -check -recursive
 terraform validate
-terraform plan -out=api.tfplan
 ```
 
-Lambda・実行ロール・ログ用ポリシー・ロググループと、Truststore の S3 バケット・設定・オブジェクトの差分を確認して適用します。
+次のコマンドで差分が表示されます。Lambda・実行ロール・ログ用ポリシー・ロググループと、Truststore の S3 バケット・設定・オブジェクトの変更内容を確認し、問題なければ `yes` を入力して適用します。
 
 ```sh
-terraform apply api.tfplan
+terraform apply
 ```
 
-アプリを変更した場合は ZIP を再生成してから `terraform plan` を実行します。生成物のハッシュが変わると Lambda のコードが更新されます。Truststore も CA ファイルの内容のハッシュで変更を検出し、更新時に新しいオブジェクトバージョンを作成します。
+アプリを変更した場合は ZIP を再生成してから `terraform apply` を実行します。生成物のハッシュが変わると Lambda のコードが更新されます。Truststore も CA ファイルの内容のハッシュで変更を検出し、更新時に新しいオブジェクトバージョンを作成します。
 
 | 出力 | 用途 |
 | --- | --- |
@@ -184,8 +183,9 @@ Lambda の実行ログを確認します。API Gateway を経由する mTLS 通�
 
 ## 削除
 
+次のコマンドで削除対象が表示されます。対象を確認し、問題なければ `yes` を入力して削除します。
+
 ```sh
-terraform plan -destroy
 terraform destroy
 terraform state list
 ```

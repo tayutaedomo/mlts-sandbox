@@ -79,7 +79,7 @@ cp terraform.tfvars.example terraform.tfvars
 ```
 
 - 認証は環境変数・AWS の認証設定から読み込みます。
-- `backend.hcl`・`terraform.tfvars`・state・保存した plan は Git 管理対象外です。プロバイダーのバージョンとハッシュを固定する `.terraform.lock.hcl` は管理対象です。
+- `backend.hcl`・`terraform.tfvars`・state は Git 管理対象外です。プロバイダーのバージョンとハッシュを固定する `.terraform.lock.hcl` は管理対象です。
 
 ## 申請
 
@@ -87,13 +87,12 @@ cp terraform.tfvars.example terraform.tfvars
 terraform init -backend-config=backend.hcl
 terraform fmt -check
 terraform validate
-terraform plan -out=certificate.tfplan
 ```
 
-差分で `aws_acm_certificate.server` の作成、対象ドメイン、`validation_method = "DNS"`、`options.export = "DISABLED"` を確認して適用します。
+次のコマンドで差分が表示されます。`aws_acm_certificate.server` の作成、対象ドメイン、`validation_method = "DNS"`、`options.export = "DISABLED"` を確認し、問題なければ `yes` を入力して適用します。
 
 ```sh
-terraform apply certificate.tfplan
+terraform apply
 terraform output -json validation_records
 ```
 
@@ -135,10 +134,9 @@ aws acm describe-certificate \
 
 ## 削除
 
-証明書を参照する API Gateway などを先に削除してから実行します。利用中の証明書は削除できません。
+証明書を参照する API Gateway などを先に削除してから実行します。利用中の証明書は削除できません。表示された削除対象を確認し、問題なければ `yes` を入力します。
 
 ```sh
-terraform plan -destroy
 terraform destroy
 terraform state list
 ```
