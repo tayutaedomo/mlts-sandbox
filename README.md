@@ -22,7 +22,8 @@
 │   ├── lambda_app/     # FastAPI アプリと Lambda ハンドラー
 │   ├── infra/
 │   │   ├── state/       # CloudFormation による Terraform state 用 S3
-│   │   └── certificate/ # Terraform による ACM サーバー証明書
+│   │   ├── certificate/ # Terraform による ACM サーバー証明書
+│   │   └── api/         # Terraform による Lambda と実行基盤
 │   ├── scripts/        # Lambda 用 ZIP のビルド
 │   └── tests/          # REST API イベントによる検証
 ├── docs/
@@ -38,6 +39,7 @@
 - [AWS 用 Lambda アプリの実行・検証手順](aws-mtls/README.md)
 - [Terraform state 用 S3 の作成・設定確認・削除](aws-mtls/infra/state/README.md)
 - [ACM サーバー証明書の申請・DNS 検証・削除](aws-mtls/infra/certificate/README.md)
+- [Lambda の AWS 実行基盤の構築・確認・削除](aws-mtls/infra/api/README.md)
 - [Lambda 用アプリのイベント変換の検証記録](docs/poc/aws-lambda.md)
 - [AWS mTLS の構成と認証の流れ](docs/poc/aws-mtls.md)
 - [Lambda の配布方式に ZIP を採用する](docs/adr/0001-lambda-zip-deployment.md)
@@ -52,6 +54,7 @@
 | `aws-mtls/`（`infra/` を除く） | Lambda 用アプリの pytest・Ruff・ZIP ビルド |
 | `aws-mtls/infra/state/` | CloudFormation の cfn-lint |
 | `aws-mtls/infra/certificate/` | Terraform の整形・構文・モックテスト |
+| `aws-mtls/infra/api/` | Terraform の整形・構文・モックテスト |
 | `aws-mtls/pyproject.toml`・`uv.lock` | Lambda 用アプリと CloudFormation の両方 |
 | `.github/workflows/` | 全検査 |
 | Markdown 文書のみ | 変更範囲の判定だけを実行し、検査ジョブはスキップ |

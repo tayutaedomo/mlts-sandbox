@@ -8,8 +8,9 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 - [構成](#構成)
 - [state 用 S3 の構築](#state-用-s3-の構築)
 - [ACM サーバー証明書の申請](#acm-サーバー証明書の申請)
-- [実行環境と準備](#実行環境と準備)
-- [イベントからの呼び出し](#イベントからの呼び出し)
+- [Lambda の AWS 実行基盤](#lambda-の-aws-実行基盤)
+- [ローカル実行の準備](#ローカル実行の準備)
+- [ローカルでのイベント呼び出し](#ローカルでのイベント呼び出し)
   - [確認の流れ](#確認の流れ)
   - [正常応答](#正常応答)
   - [HTTP エラー応答](#http-エラー応答)
@@ -25,6 +26,9 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 - アプリと実行依存をまとめ、Python 3.13・Linux arm64 用の Lambda 配布 ZIP を作成する。
 - state 用 S3 は CloudFormation で作成し、保存先の初期構築をアプリから分離する。
 - サーバー証明書は専用の Terraform で申請し、外部 DNS の CNAME で所有確認する。
+- Lambda・実行ロール・ロググループは Terraform で管理する。
+
+ローカルのイベント呼び出しでは、次の挙動を確認します。
 
 | 検証対象 | 確認する内容 |
 | --- | --- |
@@ -32,7 +36,7 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 | HTTP の処理 | FastAPI の正常応答・404・405 |
 | ハンドラーの再利用 | 同じハンドラーの連続呼び出し |
 
-この実行方法では、実際の API Gateway と Lambda の通信や、TLS・クライアント証明書の検証は行いません。
+ローカルのイベント呼び出しでは、AWS への接続や TLS・クライアント証明書の検証は行いません。
 
 - [Lambda 用アプリのイベント変換と各要素の役割](../docs/poc/aws-lambda.md)
 - [AWS mTLS の構成と認証の流れ](../docs/poc/aws-mtls.md)
@@ -49,7 +53,8 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 │   ├── state/
 │   │   ├── template.yaml     # CloudFormation：state 用 S3 とバケットポリシー
 │   │   └── README.md         # 作成・設定確認・削除の手順
-│   └── certificate/          # Terraform：ACM 証明書と検証用 CNAME の出力
+│   ├── certificate/          # Terraform：ACM 証明書と検証用 CNAME の出力
+│   └── api/                  # Terraform：Lambda・実行ロール・ログ
 ├── scripts/
 │   └── build-lambda.sh       # uv で Linux arm64 向けの依存を取得し ZIP 化
 ├── tests/
@@ -71,7 +76,11 @@ FastAPI + Mangum の Lambda アプリ、配布用 ZIP の作成、AWS 構築用�
 
 [証明書の手順](infra/certificate/README.md) に、Terraform の S3 backend 設定、証明書の申請、外部 DNS への CNAME 登録、発行確認と削除を記載しています。AWS CLI・Terraform・AWS 認証を使用します。
 
-## 実行環境と準備
+## Lambda の AWS 実行基盤
+
+Lambda の AWS 実行基盤の構築と確認は [Lambda 基盤の手順](infra/api/README.md) を参照してください。
+
+## ローカル実行の準備
 
 - Python 3.13
 - [uv](https://docs.astral.sh/uv/)
@@ -84,9 +93,9 @@ uv sync --locked --dev --python 3.13
 
 - 実行依存：FastAPI・Mangum。
 - 開発依存：pytest・Ruff・cfn-lint（CloudFormation の静的検査）。
-- ハンドラーを直接呼び出すため、Uvicorn・Docker・AWS 認証情報は不要。
+- ローカルでハンドラーを直接呼び出すため、Uvicorn・Docker・AWS 認証情報は不要。
 
-## イベントからの呼び出し
+## ローカルでのイベント呼び出し
 
 ### 確認の流れ
 
