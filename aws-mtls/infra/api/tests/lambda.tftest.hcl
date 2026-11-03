@@ -3,6 +3,9 @@
 # ケース：実行環境・ZIP の更新検知・Lambda の信頼関係・ログの保存と権限。
 # AWS での起動、実行権限、ログ出力、削除は実機で別途確認する。
 mock_provider "aws" {
+  mock_resource "aws_api_gateway_rest_api" {
+    defaults = { execution_arn = "arn:aws:execute-api:us-east-1:123456789012:test-api" }
+  }
   mock_resource "aws_iam_role" {
     defaults = {
       arn = "arn:aws:iam::123456789012:role/mtls-poc-lambda"
@@ -17,6 +20,8 @@ mock_provider "aws" {
 }
 
 variables {
+  domain_name         = "mtls-poc.example.com"
+  certificate_arn     = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
   lambda_package_path = "tests/lambda-package.txt"
   truststore_path     = "tests/truststore-ca.txt"
 }

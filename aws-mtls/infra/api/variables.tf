@@ -11,3 +11,15 @@ variable "truststore_path" {
   default     = "../../certs/generated/ca.crt"
   nullable    = false
 }
+
+variable "domain_name" {
+  description = "mTLS カスタムドメインの完全なホスト名"
+  type        = string
+  nullable    = false
+}
+
+variable "certificate_arn" {
+  description = "同じリージョンで発行済みの ACM サーバー証明書の ARN"
+  type        = string
+  nullable    = false
+}

@@ -7,6 +7,8 @@
 - [全体構成](#全体構成)
 - [API 利用者から見た処理の流れ](#api-利用者から見た処理の流れ)
 - [構成要素の役割](#構成要素の役割)
+- [API と実装の対応](#api-と実装の対応)
+- [ログの役割](#ログの役割)
 - [DNS と証明書](#dns-と証明書)
   - [名前解決とドメイン所有確認](#名前解決とドメイン所有確認)
   - [証明書の提示と検証](#証明書の提示と検証)
@@ -128,6 +130,36 @@ flowchart TB
 - カスタムドメインの mTLS は、既定の `execute-api` エンドポイントには適用されない。入口を限定するには既定エンドポイントの無効化が必要。
 - 証明書による認証は、利用者に操作権限を割り当てる認可とは別の処理。
 
+## API と実装の対応
+
+| 設定 | 実装と役割 |
+| --- | --- |
+| REST API・転送 | [gateway.tf](../../aws-mtls/infra/api/gateway.tf)。`/` と `/{proxy+}` の `ANY` を Lambda プロキシ統合で転送 |
+| デプロイ・ステージ | API 定義のスナップショットを `poc` に配置。転送設定の変更時はデプロイを更新 |
+| カスタムドメイン | ACM のサーバー証明書と、S3 Truststore の URI・バージョンを設定。mTLS はここで処理 |
+| ベースパスマッピング | ドメインのルートを `poc` に対応付ける。利用者の URL にはステージ名を含めない |
+| Lambda 呼び出し権限 | この API の `poc` ステージからの呼び出しだけを許可 |
+| ログ | [logging.tf](../../aws-mtls/infra/api/logging.tf)。ロググループ・書き込み用ロール・リージョン共通設定を管理 |
+
+`ANY` は、利用者のリクエストを受け付けるメソッドの設定。統合の `POST` は API Gateway が Lambda Invoke API を呼ぶ際のメソッドであり、元のリクエストメソッドは Lambda イベントに保持される。パスやメソッドに対する応答は FastAPI が決める。
+
+構築と DNS 登録の操作は [AWS 基盤の手順](../../aws-mtls/infra/api/README.md) を参照。
+
+## ログの役割
+
+| ログ | 記録する情報 | 用途 |
+| --- | --- | --- |
+| アクセスログ | リクエスト ID、パス・メソッド、ステータス、エラー種別、連携先リクエスト ID、証明書の識別情報 | 接続条件とリクエストの結果の照合 |
+| API Gateway 実行ログ | `INFO` レベルの処理記録。本文トレースは無効 | API Gateway から Lambda への連携の確認 |
+| Lambda 実行ログ | Lambda の開始・終了・実行結果 | 関数実行の確認 |
+
+- 各ロググループは Terraform が作成・削除し、保持期間は7日。
+- API Gateway のログ用ロール設定は、同じアカウント・リージョン内で共有される。
+- ログ用ロールには AWS 管理ポリシー `AmazonAPIGatewayPushToCloudWatchLogs` を付与する。このポリシーの CloudWatch Logs 権限は、特定のロググループには限定されない。
+- アクセスログに指定した証明書項目は、AWS の仕様では mTLS 認証失敗時に記録される。すべての TLS 接続失敗でログが生成されるとは限らない。
+
+ログ変数の仕様は [AWS のアクセスログ変数](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-variables-for-access-logging.html) を参照。
+
 ## DNS と証明書
 
 ### 名前解決とドメイン所有確認
@@ -158,3 +190,5 @@ flowchart TB
 - [API Gateway の mTLS](https://docs.aws.amazon.com/apigateway/latest/developerguide/rest-api-mutual-tls.html)
 - [Regional カスタムドメイン](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-regional-api-custom-domain-create.html)
 - [ACM の DNS 検証](https://docs.aws.amazon.com/acm/latest/userguide/dns-validation.html)
+- [API Gateway のログ設定](https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-logging.html)
+- [ログ用 AWS 管理ポリシー](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AmazonAPIGatewayPushToCloudWatchLogs.html)
